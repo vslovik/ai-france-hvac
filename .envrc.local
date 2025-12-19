@@ -1,0 +1,5 @@
+layout python "/usr/local/bin/python3.12"
+
+export DATASET_PATH="/home/valeriya/Documents/credit_policy/notebooks/20250509_CX_Sample.csv"
+
+export PYTEST_ADDOPTS="--disable-pytest-warnings"
