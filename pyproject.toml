@@ -32,6 +32,9 @@ python-levenshtein = "^0.27.3"
 swifter = "^1.4.0"
 pytest = "^9.0.1"
 duckdb = "^1.4.3"
+wandb = "^0.24.0"
+jupyterlab = "^4.5.2"
+ipykernel = "^7.1.0"
 
 [tool.poetry.group.dev.dependencies]
 notebook = "^7.4.2"
