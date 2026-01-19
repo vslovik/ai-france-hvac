@@ -35,6 +35,7 @@ duckdb = "^1.4.3"
 wandb = "^0.24.0"
 jupyterlab = "^4.5.2"
 ipykernel = "^7.1.0"
+plotly = "^6.5.2"
 
 [tool.poetry.group.dev.dependencies]
 notebook = "^7.4.2"
