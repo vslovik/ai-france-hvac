@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-WINDOW_DAYS = 90
+WINDOW_DAYS = 180
 
 
 def create_sequence_features_(df, window_days=WINDOW_DAYS):
