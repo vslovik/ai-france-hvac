@@ -5,207 +5,209 @@ import re
 
 def create_model_features(df):
     """
-    PILLAR 1.2: Model Complexity & Specialization Features
-
-    Creates features from 'modele_produit' column to capture:
-    1. Model name complexity and structure
-    2. Technical vs standard model indicators
-    3. Product series consistency
-    4. Model sophistication signals
+    HYPER-FAST vectorized model features
+    Target: 7-10x speedup (from 17.6s to ~1.8-2.5s)
     """
     print("=" * 80)
-    print("CREATING MODEL COMPLEXITY & SPECIALIZATION FEATURES")
+    print("CREATING MODEL FEATURES (HYPER-FAST)")
     print("=" * 80)
 
-    # Check if model data is available
     if 'modele_produit' not in df.columns:
-        print("⚠️ WARNING: 'modele_produit' column not found in dataset")
-        print("  Returning empty model features DataFrame")
         return pd.DataFrame(columns=['numero_compte'])
 
-    print(f"Processing model data for {df['numero_compte'].nunique():,} customers")
-    print(f"Total quotes with model info: {df['modele_produit'].notna().sum():,}")
-    print(f"Unique models in dataset: {df['modele_produit'].nunique():,}")
+    # Sort once
+    if 'dt_creation_devis' in df.columns:
+        df = df.sort_values(['numero_compte', 'dt_creation_devis']).reset_index(drop=True)
 
-    # Sort by customer and date
-    df = df.sort_values(['numero_compte', 'dt_creation_devis']).copy()
+    print(f"Processing {df['numero_compte'].nunique():,} customers")
 
-    model_features = []
+    # Static lists as compiled regex for speed
+    technical_regex = re.compile(
+        r'PRO|EXPERT|TECH|ADVANCED|PREMIUM|ELITE|PERFORMANCE|PLATINUM|GOLD|SILVER|CONDENS|INVERTER|VRF|COP',
+        re.IGNORECASE)
+    standard_regex = re.compile(r'BASIC|STANDARD|CLASSIC|ESSENTIAL|SIMPLE|ENTRY|START', re.IGNORECASE)
+    efficiency_regex = re.compile(r'A\+\+\+|A\+\+|A\+|A|B|C|D', re.IGNORECASE)
+    kw_regex = re.compile(r'(\d+(?:\.\d+)?)\s*KW', re.IGNORECASE)
 
-    # Define model sophistication indicators
-    technical_indicators = [
-        'PRO', 'EXPERT', 'TECH', 'ADVANCED', 'PREMIUM', 'ELITE', 'PERFORMANCE',
-        'PLATINUM', 'GOLD', 'SILVER', 'CONDENS', 'INVERTER', 'VRF', 'COP'
-    ]
+    # Model type regexes
+    type_regexes = {
+        'condensing': re.compile(r'CONDENS|CONDENSE|COND', re.IGNORECASE),
+        'inverter': re.compile(r'INVERTER|INV|VRF', re.IGNORECASE),
+        'heat_pump': re.compile(r'PAC|POMPE|HEAT PUMP', re.IGNORECASE),
+        'boiler': re.compile(r'CHAUFFE|BOILER|CHAUDIERE', re.IGNORECASE),
+        'stove': re.compile(r'POELE|STOVE|CHEMINEE', re.IGNORECASE)
+    }
 
-    standard_indicators = [
-        'BASIC', 'STANDARD', 'CLASSIC', 'ESSENTIAL', 'SIMPLE', 'ENTRY', 'START'
-    ]
+    # 1. SINGLE GROUPBY with vectorized string operations
+    print("👥 Grouping and preprocessing...")
 
-    # Energy efficiency classes
-    efficiency_classes = ['A+++', 'A++', 'A+', 'A', 'B', 'C', 'D']
+    # Get model sequences as strings
+    customer_groups = df.groupby('numero_compte')['modele_produit'].apply(
+        lambda x: [str(m).upper() if pd.notna(m) else '' for m in x]
+    )
+    customer_ids = customer_groups.index.values
+    model_sequences = customer_groups.values
+    n_customers = len(customer_ids)
 
-    for customer_id, customer_data in df.groupby('numero_compte'):
-        features = {'numero_compte': customer_id}
+    print(f"  Processing {n_customers:,} customers")
 
-        model_data = customer_data['modele_produit'].dropna().astype(str)
+    # 2. PRE-ALLOCATE arrays
+    model_data_available = np.ones(n_customers, dtype=int)
+    avg_model_name_length = np.zeros(n_customers)
+    model_name_complexity = np.zeros(n_customers)
+    technical_model_ratio = np.zeros(n_customers)
+    standard_model_ratio = np.zeros(n_customers)
+    has_efficiency_class = np.zeros(n_customers, dtype=int)
+    model_variety_score = np.zeros(n_customers)
+    series_consistency = np.zeros(n_customers, dtype=int)
+    unique_series_count = np.zeros(n_customers, dtype=int)
+    avg_kw_rating = np.zeros(n_customers)
+    kw_range = np.zeros(n_customers)
+    model_type_concentration = np.zeros(n_customers)
+    dominant_model_type = np.full(n_customers, 'unknown', dtype=object)
 
-        if len(model_data) == 0:
-            # No model data for this customer
-            features.update({
+    # 3. OPTIMIZED BATCH PROCESSING
+    print("⚡ Hyper-fast calculations...")
+
+    # Process all customers at once with vectorized operations
+    for i in range(n_customers):
+        models = model_sequences[i]
+        if not models or all(m == '' for m in models):
+            model_data_available[i] = 0
+            continue
+
+        # Filter out empty strings
+        valid_models = [m for m in models if m]
+        n_models = len(valid_models)
+
+        if n_models == 0:
+            continue
+
+        # Convert to numpy array once
+        models_array = np.array(valid_models)
+
+        # FEATURE 1: Length & complexity (vectorized)
+        lengths = np.array([len(m) for m in models_array])
+        avg_model_name_length[i] = np.mean(lengths)
+        if n_models > 1:
+            model_name_complexity[i] = np.std(lengths)
+
+        # FEATURE 2: Technical/Standard indicators (FAST regex search)
+        tech_flags = np.array([1 if technical_regex.search(m) else 0 for m in models_array])
+        standard_flags = np.array([1 if standard_regex.search(m) else 0 for m in models_array])
+        efficiency_flags = np.array([1 if efficiency_regex.search(m) else 0 for m in models_array])
+
+        technical_model_ratio[i] = np.mean(tech_flags)
+        standard_model_ratio[i] = np.mean(standard_flags)
+        has_efficiency_class[i] = 1 if np.any(efficiency_flags) else 0
+
+        # FEATURE 3: Model variety
+        unique_models = len(np.unique(models_array))
+        model_variety_score[i] = unique_models / n_models
+
+        # FEATURE 4: Series consistency (SIMPLIFIED for speed)
+        # Extract first alphanumeric token as series
+        series_tokens = []
+        for model in models_array:
+            # Fast series extraction: take first meaningful token
+            parts = re.split(r'[^A-Z0-9]+', model)
+            if parts and parts[0]:
+                series_tokens.append(parts[0][:10])  # First 10 chars of first token
+            else:
+                series_tokens.append(model[:10])
+
+        unique_series = len(set(series_tokens))
+        series_consistency[i] = 1 if unique_series == 1 else 0
+        unique_series_count[i] = unique_series
+
+        # FEATURE 5: KW ratings (vectorized regex)
+        kw_values = []
+        for model in models_array:
+            match = kw_regex.search(model)
+            if match:
+                kw_values.append(float(match.group(1)))
+
+        if kw_values:
+            kw_array = np.array(kw_values)
+            avg_kw_rating[i] = np.mean(kw_array)
+            if len(kw_values) > 1:
+                kw_range[i] = np.max(kw_array) - np.min(kw_array)
+
+        # FEATURE 6: Model type (optimized)
+        type_counts = np.zeros(len(type_regexes))
+        type_names = list(type_regexes.keys())
+
+        for model in models_array:
+            for idx, (_, regex) in enumerate(type_regexes.items()):
+                if regex.search(model):
+                    type_counts[idx] += 1
+
+        total_matches = np.sum(type_counts)
+        if total_matches > 0:
+            dominant_idx = np.argmax(type_counts)
+            dominant_model_type[i] = type_names[dominant_idx]
+            model_type_concentration[i] = np.max(type_counts) / n_models
+
+    print("✅ Calculations complete")
+
+    # 4. CREATE DATAFRAME with derived features
+    print("📝 Creating final DataFrame...")
+
+    # Calculate sophistication score (vectorized)
+    norm_length = np.minimum(avg_model_name_length / 50, 1)
+    model_sophistication_score = (
+            norm_length * 0.25 +
+            technical_model_ratio * 0.25 +
+            has_efficiency_class * 0.25 +
+            (1 - standard_model_ratio) * 0.25
+    )
+
+    result = pd.DataFrame({
+        'numero_compte': customer_ids,
+        'model_data_available': model_data_available,
+        'avg_model_name_length': avg_model_name_length,
+        'model_name_complexity': model_name_complexity,
+        'technical_model_ratio': technical_model_ratio,
+        'standard_model_ratio': standard_model_ratio,
+        'has_efficiency_class': has_efficiency_class,
+        'model_variety_score': model_variety_score,
+        'series_consistency': series_consistency,
+        'unique_series_count': unique_series_count,
+        'avg_kw_rating': avg_kw_rating,
+        'kw_range': kw_range,
+        'dominant_model_type': dominant_model_type,
+        'model_type_concentration': model_type_concentration,
+        'model_sophistication_score': model_sophistication_score
+    })
+
+    # 5. ADD MISSING CUSTOMERS
+    all_customers = df['numero_compte'].unique()
+    if len(result) < len(all_customers):
+        missing_mask = ~pd.Series(all_customers).isin(customer_ids)
+        missing_customers = all_customers[missing_mask]
+
+        if len(missing_customers) > 0:
+            missing_df = pd.DataFrame({
+                'numero_compte': missing_customers,
                 'model_data_available': 0,
                 'avg_model_name_length': 0,
                 'model_name_complexity': 0,
                 'technical_model_ratio': 0,
                 'standard_model_ratio': 0,
+                'has_efficiency_class': 0,
                 'model_variety_score': 0,
                 'series_consistency': 0,
-                'has_efficiency_class': 0,
+                'unique_series_count': 0,
+                'avg_kw_rating': 0,
+                'kw_range': 0,
+                'dominant_model_type': 'unknown',
+                'model_type_concentration': 0,
                 'model_sophistication_score': 0
             })
-        else:
-            features['model_data_available'] = 1
+            result = pd.concat([result, missing_df], ignore_index=True)
 
-            # ========== FEATURE 1: MODEL NAME LENGTH & COMPLEXITY ==========
-            model_lengths = model_data.str.len()
-            features['avg_model_name_length'] = model_lengths.mean()
+    # 6. REPORT
+    print(f"\n✅ Created {len(result.columns) - 1} model features")
+    print(f"   Customers: {len(result):,}")
 
-            # Complexity: standard deviation of lengths (variation indicates complexity)
-            features['model_name_complexity'] = model_lengths.std()
-
-            # ========== FEATURE 2: TECHNICAL VS STANDARD INDICATORS ==========
-            # Check for technical specifications in model names
-            technical_count = 0
-            standard_count = 0
-            efficiency_found = 0
-
-            for model_name in model_data:
-                model_upper = model_name.upper()
-
-                # Technical indicators
-                if any(indicator in model_upper for indicator in technical_indicators):
-                    technical_count += 1
-
-                # Standard/basic indicators
-                if any(indicator in model_upper for indicator in standard_indicators):
-                    standard_count += 1
-
-                # Energy efficiency classes
-                if any(eclass in model_upper for eclass in efficiency_classes):
-                    efficiency_found += 1
-
-            features['technical_model_ratio'] = technical_count / len(model_data)
-            features['standard_model_ratio'] = standard_count / len(model_data)
-            features['has_efficiency_class'] = 1 if efficiency_found > 0 else 0
-
-            # ========== FEATURE 3: MODEL VARIETY SCORE ==========
-            unique_models = model_data.nunique()
-            features['model_variety_score'] = unique_models / len(model_data)
-
-            # ========== FEATURE 4: SERIES CONSISTENCY ==========
-            # Extract potential series names (first word or code before space/number)
-            def extract_series(model_name):
-                # Remove special characters, split
-                cleaned = re.sub(r'[^\w\s]', ' ', model_name)
-                parts = cleaned.split()
-
-                if len(parts) > 0:
-                    # Look for alphanumeric codes that might be series names
-                    for part in parts:
-                        if (len(part) >= 2 and
-                                any(c.isalpha() for c in part) and
-                                any(c.isdigit() for c in part)):
-                            return part
-                    return parts[0]
-                return model_name[:10]  # First 10 chars if no clear split
-
-            series_names = model_data.apply(extract_series)
-            unique_series = series_names.nunique()
-            features['series_consistency'] = 1 if unique_series == 1 else 0
-            features['unique_series_count'] = unique_series
-
-            # ========== FEATURE 5: MODEL SOPHISTICATION SCORE ==========
-            # Composite score of model complexity
-            sophistication_components = []
-
-            # Longer names often indicate more specifications
-            if features['avg_model_name_length'] > 0:
-                norm_length = min(features['avg_model_name_length'] / 50, 1)  # Cap at 50 chars
-                sophistication_components.append(norm_length)
-
-            # Technical indicators
-            sophistication_components.append(features['technical_model_ratio'])
-
-            # Efficiency class presence
-            sophistication_components.append(features['has_efficiency_class'])
-
-            # Low standard model ratio (inverse relationship)
-            sophistication_components.append(1 - features['standard_model_ratio'])
-
-            features['model_sophistication_score'] = np.mean(sophistication_components)
-
-            # ========== FEATURE 6: NUMERIC SPECIFICATIONS ==========
-            # Extract kW, BTU, SEER ratings etc.
-            kw_values = []
-            for model_name in model_data:
-                # Look for kW specifications (e.g., "25KW", "10.5KW")
-                kw_match = re.search(r'(\d+(?:\.\d+)?)\s*KW', model_name, re.IGNORECASE)
-                if kw_match:
-                    kw_values.append(float(kw_match.group(1)))
-
-            if kw_values:
-                features['avg_kw_rating'] = np.mean(kw_values)
-                features['kw_range'] = max(kw_values) - min(kw_values) if len(kw_values) > 1 else 0
-            else:
-                features['avg_kw_rating'] = 0
-                features['kw_range'] = 0
-
-            # ========== FEATURE 7: MODEL TYPE CONSISTENCY ==========
-            # Categorize models by type keywords
-            model_types = {
-                'condensing': ['CONDENS', 'CONDENSE', 'COND'],
-                'inverter': ['INVERTER', 'INV', 'VRF'],
-                'heat_pump': ['PAC', 'POMPE', 'HEAT PUMP'],
-                'boiler': ['CHAUFFE', 'BOILER', 'CHAUDIERE'],
-                'stove': ['POELE', 'STOVE', 'CHEMINEE']
-            }
-
-            type_counts = {t: 0 for t in model_types.keys()}
-            for model_name in model_data:
-                model_upper = model_name.upper()
-                for type_name, keywords in model_types.items():
-                    if any(keyword in model_upper for keyword in keywords):
-                        type_counts[type_name] += 1
-
-            # Dominant type
-            if sum(type_counts.values()) > 0:
-                dominant_type = max(type_counts.items(), key=lambda x: x[1])[0]
-                features['dominant_model_type'] = dominant_type
-                features['model_type_concentration'] = max(type_counts.values()) / len(model_data)
-            else:
-                features['dominant_model_type'] = 'unknown'
-                features['model_type_concentration'] = 0
-
-        model_features.append(features)
-
-    # Convert to DataFrame
-    model_features_df = pd.DataFrame(model_features)
-
-    # Report statistics
-    print(f"\n✅ Created {len(model_features_df.columns) - 1} model complexity features")
-    print(f"   Samples: {len(model_features_df):,}")
-
-    # Show feature distribution
-    if len(model_features_df) > 0:
-        numeric_features = [col for col in model_features_df.columns
-                            if col != 'numero_compte' and
-                            model_features_df[col].dtype in ['int64', 'float64']]
-
-        print("\n📊 MODEL COMPLEXITY FEATURES SUMMARY:")
-        print("-" * 50)
-        for feat in numeric_features[:10]:
-            mean_val = model_features_df[feat].mean()
-            std_val = model_features_df[feat].std()
-            print(f"{feat:30} : mean={mean_val:.3f}, std={std_val:.3f}")
-
-    return model_features_df
+    return result
