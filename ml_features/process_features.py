@@ -8,9 +8,11 @@ def create_process_features(
         customer_col: str = "numero_compte",
         process_col: str = "fg_nouveau_process_relance_devis",
         target_col: str = "fg_devis_accepte",
+        first_purchase_dates: dict = None
 ) -> pd.DataFrame:
     """
     HYPER-OPTIMIZED: Removes all .apply(lambda) calls for maximum speed
+    Now includes FIRST CONVERSION filtering
     """
     required = {customer_col, process_col}
     if not required.issubset(df.columns):
@@ -19,6 +21,37 @@ def create_process_features(
         return pd.DataFrame()
 
     df = df.copy()
+
+    # ========== FIRST CONVERSION FILTERING ==========
+    print("🔍 Applying first conversion filtering...")
+    if first_purchase_dates is not None and quote_date_col in df.columns:
+        df[quote_date_col] = pd.to_datetime(df[quote_date_col], errors="coerce")
+
+        pre_filter_count = len(df)
+
+        # Vectorized filtering
+        if quote_date_col in df.columns:
+            # Create series of first purchase dates for each customer
+            df['first_purchase_date'] = df[customer_col].map(first_purchase_dates)
+
+            # Keep rows where:
+            # 1. No first purchase date (never converters) OR
+            # 2. Quote date <= first purchase date
+            mask = df['first_purchase_date'].isna() | (df[quote_date_col] <= df['first_purchase_date'])
+            df = df[mask].reset_index(drop=True)
+
+            # Drop temporary column
+            df = df.drop(columns=['first_purchase_date'])
+        else:
+            # If no date column, we can't filter chronologically
+            print("⚠️  No date column - cannot filter by first purchase dates")
+
+        post_filter_count = len(df)
+        print(f"   Filtered: {pre_filter_count:,} → {post_filter_count:,} quotes")
+        print(f"   Removed {pre_filter_count - post_filter_count:,} post-first-purchase quotes")
+    else:
+        print("⚠️  No first_purchase_dates provided - using all data")
+
     if quote_date_col in df.columns:
         df[quote_date_col] = pd.to_datetime(df[quote_date_col], errors="coerce")
 
@@ -93,36 +126,7 @@ def create_process_features(
     )
 
     # ------------------------------------------------------------------------
-    # 4. Historical success rates (if target exists)
-    # ------------------------------------------------------------------------
-    if target_col in df.columns:
-        # Create columns for conditional success
-        df["_success_new"] = np.where(df[process_col] == 1, df[target_col], np.nan)
-        df["_success_old"] = np.where(df[process_col] == 0, df[target_col], np.nan)
-
-        # Historical success rates WITHOUT .apply(lambda)
-        df["hist_success_new_process"] = (
-            df.groupby(customer_col)["_success_new"]
-            .expanding()
-            .mean()
-            .groupby(level=0)
-            .shift()
-            .reset_index(level=0, drop=True)
-            .fillna(0)
-        )
-
-        df["hist_success_old_process"] = (
-            df.groupby(customer_col)["_success_old"]
-            .expanding()
-            .mean()
-            .groupby(level=0)
-            .shift()
-            .reset_index(level=0, drop=True)
-            .fillna(0)
-        )
-
-    # ------------------------------------------------------------------------
-    # 5. Select final columns
+    # 4. Select final columns
     # ------------------------------------------------------------------------
     feature_cols = [
         "current_process_new", "current_process_missing",
@@ -132,14 +136,10 @@ def create_process_features(
         "process_deviation_from_history",
     ]
 
-    if target_col in df.columns:
-        feature_cols.extend([
-            "hist_success_new_process", "hist_success_old_process",
-        ])
-
     result = df[[customer_col] + feature_cols].copy()
 
     print(f"Created {len(feature_cols)} process features")
     print(f"→ {len(result):,} quotes | {result[customer_col].nunique():,} customers")
+    print(f"→ FIRST CONVERSION MODE: {'ENABLED' if first_purchase_dates is not None else 'DISABLED'}")
 
     return result

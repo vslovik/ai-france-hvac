@@ -78,7 +78,9 @@ def train_rf(X, y, model_name, wandb_run=None):
     model_data = {
         'model': rf_model,
         'features': X.columns.tolist(),
-        'metrics': metrics
+        'metrics': metrics,
+        'X_test': X_test,
+        'y_test': y_test
     }
 
     with open(f'{model_name}.pkl', 'wb') as f:

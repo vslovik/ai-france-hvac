@@ -1,14 +1,44 @@
 import pandas as pd
 import numpy as np
 
+import pandas as pd
+import numpy as np
 
-def create_equipment_features(df):
+
+def create_equipment_features(df, first_purchase_dates=None):
     """
     VECTORIZED VERSION of equipment upgrade features with chronological sorting
+    NOW INCLUDES FIRST CONVERSION FILTERING
     """
     print("=" * 80)
-    print("CREATING EQUIPMENT UPGRADE PATH FEATURES (VECTORIZED)")
+    print("CREATING EQUIPMENT UPGRADE PATH FEATURES (LEAKAGE-SAFE VERSION)")
     print("=" * 80)
+
+    # ========== FIRST CONVERSION FILTERING ==========
+    print("🔍 Applying first conversion filtering...")
+    if first_purchase_dates is not None and 'dt_creation_devis' in df.columns:
+        df = df.copy()
+        df['dt_creation_devis'] = pd.to_datetime(df['dt_creation_devis'], errors="coerce")
+
+        pre_filter_count = len(df)
+
+        # Vectorized filtering
+        df['first_purchase_date'] = df['numero_compte'].map(first_purchase_dates)
+
+        # Keep rows where:
+        # 1. No first purchase date (never converters) OR
+        # 2. Quote date <= first purchase date
+        mask = df['first_purchase_date'].isna() | (df['dt_creation_devis'] <= df['first_purchase_date'])
+        df = df[mask].reset_index(drop=True)
+
+        # Drop temporary column
+        df = df.drop(columns=['first_purchase_date'])
+
+        post_filter_count = len(df)
+        print(f"   Filtered: {pre_filter_count:,} → {post_filter_count:,} quotes")
+        print(f"   Removed {pre_filter_count - post_filter_count:,} post-first-purchase quotes")
+    else:
+        print("⚠️  No first_purchase_dates provided - using all data (RISKY!)")
 
     # Check for equipment data
     equipment_col = 'regroup_famille_equipement_produit'
@@ -58,15 +88,6 @@ def create_equipment_features(df):
         'OTHER': 'year_round', 'AUTRES': 'year_round'
     }
 
-    upgrade_paths = {
-        ('STOVE', 'BOILER_GAS'): 'basic_to_primary_heating',
-        ('STOVE', 'HEAT_PUMP'): 'basic_to_advanced',
-        ('BOILER_GAS', 'HEAT_PUMP'): 'primary_to_advanced',
-        ('BOILER_GAS', 'CONDENSING_BOILER'): 'standard_to_efficient',
-        ('AIR_CONDITIONER', 'HEAT_PUMP'): 'cooling_to_hybrid',
-        ('BOILER_GAS', 'GEOTHERMAL'): 'conventional_to_renewable'
-    }
-
     high_complexity_equipment = {'HEAT_PUMP', 'GEOTHERMAL', 'SOLAR_THERMAL', 'HYBRID_SYSTEM'}
 
     # ========== VECTORIZED COMPLEXITY & SEASONALITY MAPPING ==========
@@ -87,29 +108,29 @@ def create_equipment_features(df):
     # ========== GROUP-BY AGGREGATIONS (VECTORIZED) ==========
     print("\n🔧 Computing group-by aggregations...")
 
-    # Group 1: Basic equipment stats
+    # Group 1: Basic equipment stats (SAFE - all pre-first-purchase)
     group1 = df_work.groupby('numero_compte').agg(
         equipment_upgrade_data_available=('equipment_complexity', lambda x: 1 if len(x) > 0 else 0),
         equipment_variety_count=(equipment_col, 'nunique'),
-        final_complexity=('equipment_complexity', 'last'),
+        # SAFE: Latest equipment up to prediction point
+        latest_complexity=('equipment_complexity', 'last'),
         first_equipment=(equipment_col, 'first'),
-        last_equipment=(equipment_col, 'last'),
+        latest_equipment=(equipment_col, 'last'),  # Renamed from 'last_equipment'
         quote_count=(equipment_col, 'size'),
         has_high_tech=('is_high_tech', 'max')
     ).reset_index()
 
-    # Group 2: Complexity statistics
+    # Group 2: Complexity statistics (SAFE - all pre-first-purchase)
     complexity_stats = df_work.groupby('numero_compte')['equipment_complexity'].agg([
         ('min_complexity', 'min'),
-        ('max_complexity', 'max'),
+        ('max_complexity', 'max'),  # SAFE: Max from pre-first-purchase only
         ('mean_complexity', 'mean'),
         ('std_complexity', 'std')
     ]).reset_index()
 
     complexity_stats['complexity_range'] = complexity_stats['max_complexity'] - complexity_stats['min_complexity']
 
-    # Group 3: Seasonality statistics
-    # Create dummy columns for each season
+    # Group 3: Seasonality statistics (SAFE)
     season_dummies = pd.get_dummies(df_work['equipment_season'], prefix='season')
     df_season = pd.concat([df_work[['numero_compte']], season_dummies], axis=1)
 
@@ -136,10 +157,10 @@ def create_equipment_features(df):
     # ========== VECTORIZED FEATURE CALCULATIONS ==========
     print("⚡ Computing derived features...")
 
-    # Feature 1: Equipment Family Consistency
+    # Feature 1: Equipment Family Consistency (SAFE)
     result['equipment_family_consistency'] = (result['equipment_variety_count'] == 1).astype(int)
 
-    # Feature 2: Equipment Variety Index (using vectorized operations)
+    # Feature 2: Equipment Variety Index (SAFE)
     max_possible_variety = result[['equipment_variety_count', 'quote_count']].min(axis=1)
     result['equipment_variety_index'] = np.where(
         max_possible_variety > 1,
@@ -147,52 +168,13 @@ def create_equipment_features(df):
         0
     )
 
-    # Feature 3: Upgrade Trajectory Score (vectorized linear regression per group)
-    print("📈 Calculating upgrade trajectories...")
+    # ========== REMOVED LEAKING FEATURES ==========
+    print("❌ Removing leaking features: upgrade_trajectory_score, has_upgrade, has_downgrade")
 
-    def calculate_slope(group):
-        if len(group) < 2:
-            return 0
-        x = np.arange(len(group))
-        if len(group) == 0 or np.all(group == group.iloc[0]):  # <-- FIXED
-            return 0
-        return np.polyfit(x, group, 1)[0]
+    # These features have been REMOVED because they compare first vs last equipment
+    # which could be across first purchase boundary
 
-    # Calculate slopes for each customer
-    slopes = df_work.groupby('numero_compte')['equipment_complexity'].apply(calculate_slope)
-    slopes.name = 'upgrade_trajectory_score'
-
-    result = result.merge(slopes, on='numero_compte', how='left')
-    result['upgrade_trajectory_score'] = result['upgrade_trajectory_score'].fillna(0)
-
-    # Feature 4: Upgrade indicators
-    result['has_upgrade'] = ((result['last_equipment'].map(equipment_complexity).fillna(1.5) >
-                              result['first_equipment'].map(equipment_complexity).fillna(1.5)).astype(int))
-    result['has_downgrade'] = ((result['last_equipment'].map(equipment_complexity).fillna(1.5) <
-                                result['first_equipment'].map(equipment_complexity).fillna(1.5)).astype(int))
-
-    # Check specific upgrade paths
-    def get_upgrade_type(first, last):
-        key = (first, last)
-        return upgrade_paths.get(key, 'none')
-
-    result['specific_upgrade_type'] = result.apply(
-        lambda row: get_upgrade_type(row['first_equipment'], row['last_equipment']),
-        axis=1
-    )
-    result['has_upgrade_pattern'] = (result['specific_upgrade_type'] != 'none').astype(int)
-
-    # Feature 5: Equipment complexity trend
-    result['equipment_complexity_trend'] = np.select(
-        [
-            result['upgrade_trajectory_score'] > 0.05,
-            result['upgrade_trajectory_score'] < -0.05
-        ],
-        [1, -1],
-        default=0
-    )
-
-    # Feature 6: Seasonal mix (entropy-based)
+    # Feature 3: Seasonal mix (entropy-based) - SAFE
     def calculate_season_entropy(row):
         seasons = ['winter', 'summer', 'year_round']
         counts = [row.get(f'season_{s}', 0) for s in seasons]
@@ -211,34 +193,29 @@ def create_equipment_features(df):
 
     result['seasonal_equipment_mix'] = result.apply(calculate_season_entropy, axis=1)
 
-    # Feature 7: Binary season indicators
+    # Feature 4: Binary season indicators - SAFE
     for season in ['winter', 'summer']:
         result[f'has_{season}_equipment'] = (result[f'season_{season}'] > 0).astype(int)
 
     result['has_multi_season'] = (
-                (result[['season_winter', 'season_summer', 'season_year_round']] > 0).sum(axis=1) > 1).astype(int)
+            (result[['season_winter', 'season_summer', 'season_year_round']] > 0).sum(axis=1) > 1
+    ).astype(int)
 
-    # Feature 8: Equipment maturity level (vectorized calculation)
+    # Feature 5: Equipment maturity level - MODIFIED to be SAFE
+    # Only uses pre-first-purchase data
     maturity_components = []
 
-    # Component 1: Equipment complexity (normalized to 0-1)
-    maturity_components.append(np.minimum(result['final_complexity'] / 4, 1))
+    # Component 1: Latest equipment complexity (normalized to 0-1)
+    maturity_components.append(np.minimum(result['latest_complexity'] / 4, 1))
 
-    # Component 2: Upgrade trajectory
-    maturity_components.append(np.select(
-        [result['has_upgrade'] == 1, result['has_downgrade'] == 1],
-        [0.8, 0.2],
-        default=0.5
-    ))
-
-    # Component 3: Season diversity
+    # Component 2: Season diversity
     maturity_components.append(np.select(
         [result['has_multi_season'] == 1],
         [0.7],
         default=0.3
     ))
 
-    # Component 4: Equipment variety (balanced is best)
+    # Component 3: Equipment variety (balanced is best)
     maturity_components.append(np.select(
         [
             (result['equipment_variety_index'] >= 0.3) & (result['equipment_variety_index'] <= 0.7),
@@ -248,20 +225,25 @@ def create_equipment_features(df):
         default=0.3
     ))
 
-    # Calculate average maturity
-    maturity_matrix = np.column_stack(maturity_components)
-    result['equipment_maturity_level'] = np.mean(maturity_matrix, axis=1)
+    # Component 4: High-tech equipment presence
+    maturity_components.append(result['has_high_tech'] * 0.5)
 
-    # Feature 9: Strategy signals
-    result['likely_replacement'] = ((result['equipment_family_consistency'] == 1) &
-                                    (result['has_upgrade'] == 0)).astype(int)
+    # Calculate average maturity
+    if len(maturity_components) > 0:
+        maturity_matrix = np.column_stack(maturity_components)
+        result['equipment_maturity_level'] = np.mean(maturity_matrix, axis=1)
+    else:
+        result['equipment_maturity_level'] = 0.5
+
+    # Feature 6: Strategy signals - MODIFIED to be SAFE
+    result['likely_replacement'] = ((result['equipment_family_consistency'] == 1)).astype(int)
 
     result['likely_system_expansion'] = ((result['equipment_variety_count'] > 1) &
                                          (result['has_multi_season'] == 1)).astype(int)
 
     result['early_technology_adopter'] = result['has_high_tech']
 
-    # Feature 10: Seasonal concentration
+    # Feature 7: Seasonal concentration - SAFE
     result['seasonal_concentration'] = result[['season_winter', 'season_summer', 'season_year_round']].max(axis=1) / \
                                        result[['season_winter', 'season_summer', 'season_year_round']].sum(
                                            axis=1).replace(0, 1)
@@ -276,7 +258,6 @@ def create_equipment_features(df):
     # For categorical columns
     categorical_fills = {
         'primary_season_focus': 'none',
-        'specific_upgrade_type': 'none'
     }
 
     for col, fill_value in categorical_fills.items():
@@ -284,15 +265,15 @@ def create_equipment_features(df):
             result[col] = result[col].fillna(fill_value)
 
     # ========== FINAL REPORT ==========
-    print(f"\n✅ Created {len(result.columns) - 1} equipment upgrade features")
+    print(f"\n✅ Created {len(result.columns) - 1} SAFE equipment upgrade features")
     print(f"   Samples: {len(result):,} customers")
+    print(f"   REMOVED: upgrade_trajectory_score, has_upgrade, has_downgrade (potential leakage)")
+    print(f"   FIRST CONVERSION MODE: {'ENABLED' if first_purchase_dates is not None else 'DISABLED'}")
 
     # Show key feature distributions
     if len(result) > 0:
         key_features = [
             'equipment_family_consistency',
-            'upgrade_trajectory_score',
-            'has_upgrade',
             'seasonal_equipment_mix',
             'equipment_maturity_level',
             'equipment_variety_index',

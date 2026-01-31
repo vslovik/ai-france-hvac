@@ -2,14 +2,50 @@ import pandas as pd
 import numpy as np
 
 
-def create_solution_complexity_features(df):
+def create_solution_complexity_features(df, first_purchase_dates=None):
     """
     VECTORIZED VERSION with chronological sorting for accuracy
     (LEAKAGE-FREE for predicting at last quote)
+    Now includes FIRST CONVERSION filtering
     """
     print("=" * 80)
     print("CREATING SOLUTION COMPLEXITY FEATURES (VECTORIZED)")
     print("=" * 80)
+
+    # ========== FIRST CONVERSION FILTERING ==========
+    print("🔍 Applying first conversion filtering...")
+    if first_purchase_dates is not None:
+        # Create mask to include only pre-first-purchase quotes
+        df = df.copy()
+
+        def filter_pre_first_purchase(row):
+            customer = row['numero_compte']
+            quote_date = row.get('dt_creation_devis')
+
+            # If no date column, use all data
+            if quote_date is None or pd.isna(quote_date):
+                return True
+
+            # Get first purchase date for this customer
+            first_date = first_purchase_dates.get(customer)
+
+            # If no purchase, keep all quotes
+            if pd.isna(first_date):
+                return True
+
+            # Keep only quotes before or at first purchase
+            return quote_date <= first_date
+
+        # Apply filtering
+        pre_filter_count = len(df)
+        mask = df.apply(filter_pre_first_purchase, axis=1)
+        df = df[mask].reset_index(drop=True)
+        post_filter_count = len(df)
+
+        print(f"   Filtered: {pre_filter_count:,} → {post_filter_count:,} quotes")
+        print(f"   Removed {pre_filter_count - post_filter_count:,} post-first-purchase quotes")
+    else:
+        print("⚠️  No first_purchase_dates provided - using all data")
 
     # Check for equipment data
     equipment_col = 'regroup_famille_equipement_produit'
@@ -160,7 +196,7 @@ def create_solution_complexity_features(df):
 
     # Total efficiency score
     efficiency_agg['energy_efficiency_score'] = efficiency_agg['efficiency_score'] + (
-                efficiency_agg['high_efficiency_count'] * 2)
+            efficiency_agg['high_efficiency_count'] * 2)
     efficiency_agg['unique_efficiency_indicators'] = efficiency_agg['efficiency_score']
     efficiency_agg['has_high_efficiency_system'] = (efficiency_agg['energy_efficiency_score'] >= 2).astype(int)
 
@@ -292,6 +328,7 @@ def create_solution_complexity_features(df):
     # ========== FINAL REPORT ==========
     print(f"\n✅ Created {len(result.columns) - 1} solution complexity features")
     print(f"   Samples: {len(result):,} customers")
+    print(f"   FIRST CONVERSION MODE: {'ENABLED' if first_purchase_dates is not None else 'DISABLED'}")
 
     # Show key features
     if len(result) > 0:
