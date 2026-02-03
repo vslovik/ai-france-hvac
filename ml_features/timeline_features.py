@@ -295,27 +295,17 @@ def create_advanced_timeline_features(df, target_type='first_conversion'):
     return result_df
 
 
-def create_timeline_interaction_features(timeline_df, brand_df, equipment_df):
+def create_timeline_interaction_features(df):
     """
     Create interaction features between timeline and other pillars
     """
-    # Merge dataframes
-    merged = pd.merge(timeline_df, brand_df, on='numero_compte', how='left')
-    merged = pd.merge(merged, equipment_df, on='numero_compte', how='left')
-
-    interaction_features = []
-
-    for idx, row in merged.iterrows():
-        features = {'numero_compte': row['numero_compte']}
-
+    for idx, row in df.iterrows():
         # Interaction 1: Brand loyalty + Temporal consistency
         if 'brand_loyalty_index' in row and 'temporal_consistency_score' in row:
-            features['loyal_consistent_customer'] = row['brand_loyalty_index'] * row['temporal_consistency_score']
+            df['loyal_consistent_customer'] = row['brand_loyalty_index'] * row['temporal_consistency_score']
 
         # Interaction 2: Equipment maturity + Seasonality
         if 'equipment_maturity_level' in row and 'seasonal_concentration' in row:
-            features['mature_seasonal_focus'] = row['equipment_maturity_level'] * row['seasonal_concentration']
+            df['mature_seasonal_focus'] = row['equipment_maturity_level'] * row['seasonal_concentration']
 
-        interaction_features.append(features)
-
-    return pd.DataFrame(interaction_features)
+    return df
