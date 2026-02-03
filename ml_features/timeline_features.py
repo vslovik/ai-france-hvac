@@ -299,13 +299,20 @@ def create_timeline_interaction_features(df):
     """
     Create interaction features between timeline and other pillars
     """
+
+    interaction_features = []
+
     for idx, row in df.iterrows():
+        features = {'numero_compte': row['numero_compte']}
+
         # Interaction 1: Brand loyalty + Temporal consistency
         if 'brand_loyalty_index' in row and 'temporal_consistency_score' in row:
-            df['loyal_consistent_customer'] = row['brand_loyalty_index'] * row['temporal_consistency_score']
+            features['loyal_consistent_customer'] = row['brand_loyalty_index'] * row['temporal_consistency_score']
 
         # Interaction 2: Equipment maturity + Seasonality
         if 'equipment_maturity_level' in row and 'seasonal_concentration' in row:
-            df['mature_seasonal_focus'] = row['equipment_maturity_level'] * row['seasonal_concentration']
+            features['mature_seasonal_focus'] = row['equipment_maturity_level'] * row['seasonal_concentration']
 
-    return df
+        interaction_features.append(features)
+
+    return pd.DataFrame(interaction_features)

@@ -1209,76 +1209,219 @@ def enhance_existing_features_with_dominant_signals(existing_features, mode='sta
 
 def create_correction_features(df_quotes, prediction_date=None, mode='training'):
     """
-    Create all features from raw quote data with error-correction enhancements
-    CREATE ALL FEATURES FIRST, THEN MERGE ONCE
+    OPTIMIZED: Create all features from raw quote data
+    FIXED: No datetime columns in final output
     """
     print("Creating features from raw data with error correction...")
 
-    # 1. CREATE ALL FEATURE SETS FIRST
-    print("  → Creating ALL feature sets...")
+    # 0. PREPARE DATA ONCE
+    df = df_quotes.copy()
+    customer_ids = df['numero_compte'].unique()
+    result = pd.DataFrame({'numero_compte': customer_ids})
 
-    # Create each feature set independently
-    engagement = create_engagement_features(df_quotes)
-    equipment = create_equipment_brand_features(df_quotes)
-    process = create_process_commercial_features(df_quotes)
-    agency = create_agency_region_features(df_quotes)
-    price = create_price_features(df_quotes)
-    decision_speed = create_decision_speed_features(df_quotes, prediction_date)
-    interaction = create_interaction_features(df_quotes, prediction_date)
-    velocity = create_purchase_velocity_features(df_quotes, prediction_date, mode)
-    consistency = create_decision_consistency_features(df_quotes, prediction_date, mode)
+    # 1. GROUP ONCE, REUSE GROUPS
+    print("  → Single groupby for all features...")
 
-    # 2. CREATE INTERACTIONS AND SCORES FROM RELEVANT FEATURES
-    print("  → Creating interactions and scores...")
+    # 2. Calculate basic stats in single pass
+    agg_dict = {}
 
-    # Merge only what's needed for interactions
-    temp_for_interactions = pd.merge(engagement, velocity, on='numero_compte', how='left')
-    temp_for_interactions = pd.merge(temp_for_interactions, consistency, on='numero_compte', how='left')
-    temp_for_interactions = pd.merge(temp_for_interactions, price, on='numero_compte', how='left')
+    # Only include numeric or categorical columns for aggregation
+    if 'id_devis' in df.columns:
+        agg_dict['total_quotes'] = ('id_devis', 'count')
 
-    # Now create the interactions and scores
-    error_interactions = create_error_pattern_interactions(temp_for_interactions)
-    business_scores = create_business_ready_scores(temp_for_interactions)
+    if 'dt_creation_devis' in df.columns:
+        # Convert to datetime and get min/max as datetime for calculations
+        df['dt_creation_devis_dt'] = pd.to_datetime(df['dt_creation_devis'], errors='coerce')
+        agg_dict['first_quote_date'] = ('dt_creation_devis_dt', 'min')
+        agg_dict['last_quote_date'] = ('dt_creation_devis_dt', 'max')
 
-    # 3. SINGLE MERGE OF EVERYTHING
-    print("  → SINGLE MERGE of all features...")
+    if 'nom_agence' in df.columns:
+        agg_dict['unique_agencies'] = ('nom_agence', 'nunique')
 
-    # List of ALL feature DataFrames to merge
-    all_feature_sets = [
-        engagement,
-        equipment,
-        process,
-        agency,
-        price,
-        decision_speed,
-        interaction,
-        velocity,
-        consistency,
-        error_interactions,
-        business_scores
-    ]
+    if 'regroup_famille_equipement_produit' in df.columns:
+        agg_dict['unique_equipment'] = ('regroup_famille_equipement_produit', 'nunique')
 
-    # Start with the first feature set
-    all_features = engagement
+    if 'marque_produit' in df.columns:
+        agg_dict['unique_brands'] = ('marque_produit', 'nunique')
 
-    # SINGLE LOOP - SINGLE MERGE OPERATION
-    for feature_set in all_feature_sets[1:]:  # Skip first since it's our starting point
-        if not feature_set.empty:
-            all_features = pd.merge(all_features, feature_set, on='numero_compte', how='left')
+    if 'mt_ttc_apres_aide_devis' in df.columns:
+        # Convert to numeric
+        df['mt_ttc_apres_aide_devis_num'] = pd.to_numeric(df['mt_ttc_apres_aide_devis'], errors='coerce')
+        agg_dict['avg_price'] = ('mt_ttc_apres_aide_devis_num', 'mean')
+        agg_dict['max_price'] = ('mt_ttc_apres_aide_devis_num', 'max')
+        agg_dict['min_price'] = ('mt_ttc_apres_aide_devis_num', 'min')
 
-    # 4. Fill missing values
-    numeric_cols = all_features.select_dtypes(include=[np.number]).columns
-    all_features[numeric_cols] = all_features[numeric_cols].fillna(0)
+    if 'fg_nouveau_process_relance_devis' in df.columns:
+        agg_dict['new_process_count'] = ('fg_nouveau_process_relance_devis', lambda x: (x == 1).sum())
 
-    # 5. Add target if available
-    if 'fg_devis_accepte' in df_quotes.columns:
-        print("  → Adding conversion target...")
-        conversion_status = df_quotes.groupby('numero_compte')['fg_devis_accepte'].max().reset_index()
-        conversion_status = conversion_status.rename(columns={'fg_devis_accepte': 'converted'})
-        all_features = pd.merge(all_features, conversion_status, on='numero_compte', how='left')
+    if 'fonction_commercial' in df.columns:
+        agg_dict['unique_commercials'] = ('fonction_commercial', 'nunique')
 
-    print(f"✅ Created {len(all_features.columns) - 1} features for {len(all_features)} customers")
+    # Perform aggregation
+    if agg_dict:
+        basic_stats = df.groupby('numero_compte').agg(**agg_dict).reset_index()
+        result = pd.merge(result, basic_stats, on='numero_compte', how='left')
 
-    final_features = enhance_existing_features_with_dominant_signals(all_features)
+    # 3. VECTORIZED CALCULATIONS (NO DATETIME COLUMNS IN FINAL OUTPUT)
+    print("  → Vectorized calculations...")
 
-    return final_features
+    # Engagement features - convert datetime to days
+    if all(col in result.columns for col in ['first_quote_date', 'last_quote_date']):
+        result['engagement_days'] = (result['last_quote_date'] - result['first_quote_date']).dt.days
+        result['engagement_density'] = result['total_quotes'] / (result['engagement_days'] + 1)
+        result['is_single_quote'] = (result['total_quotes'] == 1).astype(int)
+        # REMOVE DATETIME COLUMNS
+        result = result.drop(columns=['first_quote_date', 'last_quote_date'])
+
+    # Process features
+    if 'new_process_count' in result.columns:
+        result['new_process_ratio'] = result['new_process_count'] / result['total_quotes']
+        result['process_consistency'] = ((result['new_process_ratio'] == 1) |
+                                         (result['new_process_ratio'] == 0)).astype(int)
+
+    # Price features
+    if all(col in result.columns for col in ['max_price', 'min_price', 'avg_price']):
+        result['price_range'] = result['max_price'] - result['min_price']
+        result['price_volatility'] = result['price_range'] / (result['avg_price'].clip(lower=1) + 1e-10)
+
+    # 4. PRIMARY EQUIPMENT AND BRAND
+    if 'regroup_famille_equipement_produit' in df.columns:
+        equip_counts = (df.groupby(['numero_compte', 'regroup_famille_equipement_produit'])['id_devis']
+                        .count().reset_index(name='count'))
+        primary_equip_idx = equip_counts.groupby('numero_compte')['count'].idxmax()
+        primary_equip = equip_counts.loc[primary_equip_idx].rename(
+            columns={'regroup_famille_equipement_produit': 'primary_equipment'}
+        )
+        result = pd.merge(result, primary_equip[['numero_compte', 'primary_equipment']],
+                          on='numero_compte', how='left')
+
+    if 'marque_produit' in df.columns:
+        brand_counts = (df.groupby(['numero_compte', 'marque_produit'])['id_devis']
+                        .count().reset_index(name='count'))
+        primary_brand_idx = brand_counts.groupby('numero_compte')['count'].idxmax()
+        primary_brand = brand_counts.loc[primary_brand_idx].rename(
+            columns={'marque_produit': 'primary_brand'}
+        )
+        result = pd.merge(result, primary_brand[['numero_compte', 'primary_brand']],
+                          on='numero_compte', how='left')
+
+    # 5. DECISION SPEED FEATURES
+    print("  → Optimized decision speed features...")
+    if 'dt_creation_devis_dt' in df.columns:
+        # Calculate days between quotes
+        df_sorted = df.sort_values(['numero_compte', 'dt_creation_devis_dt']).copy()
+        df_sorted['prev_date'] = df_sorted.groupby('numero_compte')['dt_creation_devis_dt'].shift(1)
+        df_sorted['days_between'] = (df_sorted['dt_creation_devis_dt'] - df_sorted['prev_date']).dt.days
+
+        # Aggregated stats
+        speed_stats = df_sorted.groupby('numero_compte').agg(
+            avg_days_between=('days_between', 'mean'),
+            std_days_between=('days_between', 'std'),
+            min_days_between=('days_between', 'min'),
+            max_days_between=('days_between', 'max')
+        ).reset_index()
+
+        # Simplified scoring
+        speed_stats['is_quick_decider'] = np.select(
+            [
+                speed_stats['avg_days_between'] < 7,
+                speed_stats['avg_days_between'] < 30,
+                True
+            ],
+            [0.8, 0.6, 0.3],
+            default=0.5
+        )
+
+        speed_stats['optimal_timing_score'] = (
+                    1 - (speed_stats['avg_days_between'].fillna(0) - 31.7).abs() / 31.7).clip(0, 1)
+        speed_stats['tire_kicker_indicator'] = ((speed_stats['avg_days_between'] >= 15) &
+                                                (speed_stats['avg_days_between'] <= 25)).astype(float)
+        speed_stats['engagement_consistency'] = (1 - (speed_stats['std_days_between'] /
+                                                      (speed_stats['avg_days_between'].clip(lower=1) + 1e-10))).clip(0,
+                                                                                                                     1)
+
+        # Fill NaN values
+        speed_stats = speed_stats.fillna({
+            'avg_days_between': 0,
+            'std_days_between': 0,
+            'min_days_between': 0,
+            'max_days_between': 0,
+            'is_quick_decider': 0.5,
+            'optimal_timing_score': 0.5,
+            'tire_kicker_indicator': 0,
+            'engagement_consistency': 1
+        })
+
+        result = pd.merge(result, speed_stats, on='numero_compte', how='left')
+
+    # 6. ADDITIONAL FEATURES
+    print("  → Additional features...")
+
+    # Senior commercial indicator
+    if 'fonction_commercial' in df.columns:
+        senior_keywords = ['Responsable', 'Directeur', 'Manager', 'Chef', 'Senior']
+        is_senior = df['fonction_commercial'].astype(str).apply(
+            lambda x: any(keyword in x for keyword in senior_keywords)
+        )
+        df['is_senior'] = is_senior.astype(int)
+        senior_stats = df.groupby('numero_compte')['is_senior'].max().reset_index()
+        senior_stats = senior_stats.rename(columns={'is_senior': 'is_senior_commercial'})
+        result = pd.merge(result, senior_stats, on='numero_compte', how='left')
+
+    # Agency switching
+    if 'nom_agence' in df.columns:
+        agency_switching = df.groupby('numero_compte')['nom_agence'].nunique().reset_index()
+        agency_switching = agency_switching.rename(columns={'nom_agence': 'agency_switches'})
+        agency_switching['agency_switches'] = agency_switching['agency_switches'] - 1  # Subtract 1 for actual switches
+        result = pd.merge(result, agency_switching, on='numero_compte', how='left')
+
+    # 7. SIMPLE SCORES (no datetime dependencies)
+    result['price_consistency_score'] = 0.5  # Default
+    result['equipment_focus_score'] = 0.5
+    result['brand_loyalty_score'] = 0.5
+
+    # Calculate actual brand loyalty if we have the data
+    if 'primary_brand' in result.columns and 'total_quotes' in result.columns:
+        # Count brand occurrences per customer
+        if 'marque_produit' in df.columns:
+            brand_counts = df.groupby(['numero_compte', 'marque_produit']).size().reset_index(name='brand_count')
+            total_counts = df.groupby('numero_compte').size().reset_index(name='total_quotes_brand')
+            brand_stats = pd.merge(brand_counts, total_counts, on='numero_compte')
+            brand_stats['brand_proportion'] = brand_stats['brand_count'] / brand_stats['total_quotes_brand']
+
+            # Get max proportion per customer
+            max_brand = brand_stats.loc[brand_stats.groupby('numero_compte')['brand_proportion'].idxmax()]
+            max_brand = max_brand[['numero_compte', 'brand_proportion']].rename(
+                columns={'brand_proportion': 'brand_loyalty_score'}
+            )
+            result = result.drop(columns=['brand_loyalty_score'], errors='ignore')
+            result = pd.merge(result, max_brand, on='numero_compte', how='left')
+
+    # 8. ADD TARGET IF AVAILABLE
+    if 'fg_devis_accepte' in df.columns:
+        conversion = df.groupby('numero_compte')['fg_devis_accepte'].max().reset_index()
+        conversion = conversion.rename(columns={'fg_devis_accepte': 'converted'})
+        result = pd.merge(result, conversion, on='numero_compte', how='left')
+
+    # 9. FINAL CLEANUP
+    print("  → Final cleanup...")
+
+    # Fill NaN values in numeric columns
+    numeric_cols = result.select_dtypes(include=[np.number]).columns
+    result[numeric_cols] = result[numeric_cols].fillna(0)
+
+    # Fill NaN in object/string columns
+    object_cols = result.select_dtypes(include=['object', 'string']).columns
+    result[object_cols] = result[object_cols].fillna('unknown')
+
+    # Ensure all columns are numeric or categorical (no datetime)
+    for col in result.columns:
+        if result[col].dtype == 'datetime64[ns]':
+            # Convert datetime to days since min date or similar
+            result[col] = (result[col] - result[col].min()).dt.days
+
+    print(f"✅ Created {len(result.columns) - 1} optimized features for {len(result)} customers")
+    print(f"   Columns: {list(result.columns)}")
+    print(f"   Dtypes: {result.dtypes.unique()}")
+
+    return result

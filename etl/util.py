@@ -1,6 +1,49 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import LabelEncoder
+
+
+# Quick check before running full function
+def check_chronological_integrity(df, customer_col="numero_compte", date_col="dt_creation_devis"):
+    """Quick check for chronological issues"""
+    df_check = df[[customer_col, date_col]].copy()
+    df_check[date_col] = pd.to_datetime(df_check[date_col], errors='coerce')
+
+    issues = []
+    for customer in df_check[customer_col].unique()[:100]:  # Check first 100 customers
+        cust_dates = df_check[df_check[customer_col] == customer][date_col].dropna()
+        if not cust_dates.is_monotonic_increasing:
+            issues.append(customer)
+
+    if issues:
+        print(f"❌ Found {len(issues)} customers with non-chronological quotes")
+        print(f"   Example customers: {issues[:5]}")
+        return False
+    else:
+        print("✅ All checked customers have chronological quotes")
+        return True
+
+
+# Add this validation function to your pipeline
+def validate_no_temporal_leakage(df, customer_col, date_col):
+    """Ensure no data leakage from non-chronological data"""
+    df_temp = df.sort_values([customer_col, date_col])
+
+    # Create a sequence ID to check ordering
+    df_temp['seq_id'] = df_temp.groupby(customer_col).cumcount()
+    df_temp['orig_index'] = df_temp.index
+
+    # Check if original order matches chronological order
+    df_check = df_temp.groupby(customer_col).apply(
+        lambda x: not x.index.equals(x.sort_values(date_col).index)
+    )
+
+    problematic_customers = df_check[df_check].index.tolist()
+
+    if problematic_customers:
+        print(f"🚨 DATA LEAKAGE RISK: {len(problematic_customers)} customers need re-sorting")
+        return False, problematic_customers
+    return True, []
 
 
 def prepare_dataset_without_leakage(df, dataset_name):
