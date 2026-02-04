@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import RobustScaler
+from sklearn.feature_selection import mutual_info_classif, SelectKBest
 
 
 def create_dl_specific_features(X, y=None):
@@ -113,8 +114,6 @@ def correlation_selection(X, y, threshold=0.95):
 
 def mutual_info_selection(X, y, n_features=64):
     """Select features using mutual information"""
-    from sklearn.feature_selection import mutual_info_classif, SelectKBest
-
     # Calculate mutual information
     mi_scores = mutual_info_classif(X, y, random_state=42)
 
@@ -135,6 +134,83 @@ def mutual_info_selection(X, y, n_features=64):
         print(f"  {i+1:2d}. {feat:30s} | MI: {score:.4f}")
 
     # Return DataFrame with feature names
-    return pd.DataFrame(X_array, columns=selected_features, index=X.index), selected_features
+    df = pd.DataFrame(X_array, columns=selected_features, index=X.index), selected_features
+
+    df = create_focused_features(df)
+    df = enhance_region_features(df)
+    df = enhance_region_features(df)
+
+    return df
 
 
+def create_focused_features(X):
+    """Create new features focused on what matters most"""
+    X_focused = X.copy()
+
+    # Double down on conversion rate features
+    if 'avg_recent_conversion_rate' in X.columns:
+        # More transformations of the most important feature
+        X_focused['conversion_rate_exp'] = np.exp(X['avg_recent_conversion_rate'].clip(-10, 10))
+        X_focused['conversion_rate_power3'] = X['avg_recent_conversion_rate'] ** 3
+        X_focused['conversion_rate_sigmoid'] = 1 / (1 + np.exp(-X['avg_recent_conversion_rate']))
+
+    # Agency-conversion interactions
+    if 'main_agency_log' in X.columns and 'avg_recent_conversion_rate' in X.columns:
+        X_focused['agency_conversion_interaction'] = X['main_agency_log'] * X['avg_recent_conversion_rate']
+
+    # Discount-conversion interactions
+    if 'avg_discount_pct_abs_sqrt' in X.columns and 'avg_recent_conversion_rate' in X.columns:
+        X_focused['discount_conversion_interaction'] = X['avg_discount_pct_abs_sqrt'] * X['avg_recent_conversion_rate']
+
+    # Price-conversion interactions
+    price_cols = [c for c in X.columns if 'price' in c.lower() and 'conversion' not in c.lower()]
+    if price_cols and 'avg_recent_conversion_rate' in X.columns:
+        for price_col in price_cols[:3]:  # Top 3 price features
+            X_focused[f'{price_col}_conversion_interaction'] = X[price_col] * X['avg_recent_conversion_rate']
+
+    print(f"Added {X_focused.shape[1] - X.shape[1]} focused features")
+    return X_focused
+
+
+def enhance_discount_features(X):
+    """Discounts are #2 important - enhance them"""
+    X_enhanced = X.copy()
+
+    if 'avg_discount_pct' in X.columns:
+        # Discount tiers
+        X_enhanced['discount_tier'] = pd.cut(
+            X['avg_discount_pct'],
+            bins=[-np.inf, 0, 5, 10, 20, np.inf],
+            labels=['negative', 'small', 'medium', 'large', 'very_large']
+        ).cat.codes
+
+        # Is there any discount?
+        X_enhanced['has_discount'] = (X['avg_discount_pct'] > 0).astype(int)
+
+        # Discount effectiveness (interact with price)
+        if 'avg_current_price' in X.columns:
+            X_enhanced['discount_price_ratio'] = X['avg_discount_pct'] / (X['avg_current_price'] + 1)
+
+    print(f"Added {X_enhanced.shape[1] - X.shape[1]} discount-focused features")
+    return X_enhanced
+
+
+def enhance_region_features(X):
+    """Enhance region-related features since they're most important"""
+    X_enhanced = X.copy()
+
+    if 'main_region' in X.columns:
+        # Region is categorical but encoded as numeric - create better features
+        # Create region clusters if you have more info
+        X_enhanced['region_is_popular'] = (X['main_region'] == X['main_region'].mode()[0]).astype(int)
+
+        # Region interactions with price
+        if 'avg_current_price' in X.columns:
+            X_enhanced['region_price_interaction'] = X['main_region'] * X['avg_current_price']
+
+        # Region interactions with discount
+        if 'avg_discount_pct' in X.columns:
+            X_enhanced['region_discount_interaction'] = X['main_region'] * X['avg_discount_pct']
+
+    print(f"Added {X_enhanced.shape[1] - X.shape[1]} region-focused features")
+    return X_enhanced

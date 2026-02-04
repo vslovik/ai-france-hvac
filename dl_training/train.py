@@ -1,3 +1,5 @@
+import pickle
+
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -156,4 +158,17 @@ def train_advanced_dl_model(X_dl, y_dl, model_type='advanced', epochs=100):
     print(f"\n✅ Training Complete!")
     print(f"  Best Val AUC: {best_val_auc:.4f}")
 
-    return model, best_val_auc
+    # Save model
+    model_data = {
+        'model': model,
+        'X_test': X_val,
+        'y_test': y_val
+    }
+
+    model_name = f"dl_{model_type}_model"
+    with open(f'{model_name}.pkl', 'wb') as f:
+        pickle.dump(model_data, f)
+
+    print(f"✓ Model saved: {model_name}.pkl")
+
+    return model_data
