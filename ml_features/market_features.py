@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from ml_features.globals import BUDGET_BRANDS, PREMIUM_BRANDS
+
 
 def create_market_features(df, target_type='first_conversion'):
     """
@@ -36,17 +38,6 @@ def create_market_features(df, target_type='first_conversion'):
     # df = df (use all data as-is)
 
     print(f"  Quotes for feature calculation: {len(df):,}")
-
-    # 3. STATIC BRAND CATEGORIES (from business knowledge, not data)
-    premium_brands = {
-        'MITSUBISHI ELECTRIC', 'VIESSMANN', 'BOSCH', 'DE DIETRICH',
-        'BUDERUS', 'JUNKERS', 'WOLF', 'WESTEN'
-    }
-
-    budget_brands = {
-        'ATLANTIC', 'FRISQUET', 'CHAPPEE', 'SAUNIER DUVAL',
-        'PROTHERM', 'THERMOR', 'AQUATIS'
-    }
 
     # 4. SINGLE GROUPBY to get customer brand sequences
     print("👥 Grouping customer data...")
@@ -92,8 +83,8 @@ def create_market_features(df, target_type='first_conversion'):
             seq_array = np.array(seq)
 
             # FEATURE 1: Premium vs Budget brand ratios
-            premium_count = sum(1 for b in seq if b in premium_brands)
-            budget_count = sum(1 for b in seq if b in budget_brands)
+            premium_count = sum(1 for b in seq if b in PREMIUM_BRANDS)
+            budget_count = sum(1 for b in seq if b in BUDGET_BRANDS)
 
             results['premium_brand_ratio'][j] = premium_count / seq_len
             results['budget_brand_ratio'][j] = budget_count / seq_len
@@ -170,20 +161,6 @@ def create_market_features(df, target_type='first_conversion'):
     print(f"   Total customers: {len(features_df):,}")
     print(f"   With brand data: {features_df['market_data_available'].sum():,}")
     print(f"   Converters: {features_df['converted'].sum():,} ({features_df['converted'].mean():.1%})")
-
-    # 🚨 DEBUG: Check the distribution that was causing the leak
-    print("\n🔍 DEBUG: Checking market_data_available distribution:")
-    conv_with_data = features_df[(features_df['converted'] == 1) & (features_df['market_data_available'] == 1)].shape[0]
-    conv_total = features_df[features_df['converted'] == 1].shape[0]
-    non_conv_with_data = \
-    features_df[(features_df['converted'] == 0) & (features_df['market_data_available'] == 1)].shape[0]
-    non_conv_total = features_df[features_df['converted'] == 0].shape[0]
-
-    print(f"   Converters with brand data: {conv_with_data:,}/{conv_total:,} ({conv_with_data / conv_total:.1%})")
-    print(
-        f"   Non-converters with brand data: {non_conv_with_data:,}/{non_conv_total:,} ({non_conv_with_data / non_conv_total:.1%})")
-    print(
-        f"   Ratio (should be ~similar): {conv_with_data / conv_total:.3f} vs {non_conv_with_data / non_conv_total:.3f}")
 
     # Feature correlation check
     print("\n🔍 Feature correlations with target (should be < 0.3 for no leakage):")

@@ -1,32 +1,25 @@
 import numpy as np
 import pandas as pd
 
+from ml_features.globals import PREMIUM_BRANDS, BUDGET_BRANDS
+
 
 def create_brand_features(df):
-    """
-    ULTRA-FAST vectorized brand features (leakage-free)
-    Target: 5-8x speedup from 7.7s to ~1-1.5s
-    """
     print("=" * 80)
-    print("CREATING BRAND FEATURES (ULTRA-FAST, LEAKAGE-FREE)")
+    print("CREATING BRAND FEATURES")
     print("=" * 80)
 
-    # Quick validation
     if 'marque_produit' not in df.columns:
         print("⚠️ No brand data")
         return pd.DataFrame(columns=['numero_compte'])
 
-    # 1. Sort once
+    # Sort once
     if 'dt_creation_devis' in df.columns:
         df = df.sort_values(['numero_compte', 'dt_creation_devis']).reset_index(drop=True)
 
     print(f"Processing {len(df):,} quotes for {df['numero_compte'].nunique():,} customers")
 
-    # 2. Static brand lists (leakage-free)
-    premium_brands = {'MITSUBISHI ELECTRIC', 'VIESSMANN', 'BOSCH', 'DE DIETRICH', 'BUDERUS'}
-    budget_brands = {'ATLANTIC', 'FRISQUET', 'CHAPPEE', 'SAUNIER DUVAL', 'PROTHERM'}
-
-    # 3. SINGLE GROUPBY to get all sequences
+    # SINGLE GROUPBY to get all sequences
     print("👥 Single groupby aggregation...")
 
     customer_groups = df.groupby('numero_compte')['marque_produit'].apply(list)
@@ -36,7 +29,7 @@ def create_brand_features(df):
 
     print(f"  Processing {n_customers:,} customers with brand data")
 
-    # 4. VECTORIZED FEATURE CALCULATION
+    # VECTORIZED FEATURE CALCULATION
     print("⚡ Vectorized feature calculation...")
 
     # Initialize arrays
@@ -75,8 +68,8 @@ def create_brand_features(df):
 
             # FEATURE 3: Premium/Budget preference (most common brand)
             top_brand = unique[counts.argmax()]
-            prefers_premium_brand[j] = 1 if top_brand in premium_brands else 0
-            prefers_budget_brand[j] = 1 if top_brand in budget_brands else 0
+            prefers_premium_brand[j] = 1 if top_brand in PREMIUM_BRANDS else 0
+            prefers_budget_brand[j] = 1 if top_brand in BUDGET_BRANDS else 0
 
             # FEATURE 4: Brand consistency (all same brand)
             brand_consistency[j] = 1 if len(unique) == 1 else 0
@@ -103,7 +96,7 @@ def create_brand_features(df):
 
     print("✅ Vectorized calculations complete")
 
-    # 5. CREATE FINAL DATAFRAME
+    # CREATE FINAL DATAFRAME
     print("📝 Creating final DataFrame...")
 
     result = pd.DataFrame({
@@ -118,7 +111,7 @@ def create_brand_features(df):
         'brand_convergence': brand_convergence
     })
 
-    # 6. ADD CUSTOMERS WITHOUT BRAND DATA
+    # ADD CUSTOMERS WITHOUT BRAND DATA
     all_customers = df['numero_compte'].unique()
     if len(result) < len(all_customers):
         existing_customers = set(customer_ids)
@@ -144,7 +137,7 @@ def create_brand_features(df):
 
             result = pd.concat([result, missing_df], ignore_index=True)
 
-    # 7. FINAL REPORT
+    # FINAL REPORT
     print(f"\n✅ Created {len(result.columns) - 1} brand features")
     print(f"   Total customers: {len(result):,}")
     print(f"   With brand data: {result['brand_data_available'].sum():,}")

@@ -11,7 +11,8 @@ def create_timeline_features(
         accept_col: str = "fg_devis_accepte"
 ) -> pd.DataFrame:
     """
-    FIXED: Timeline features WITHOUT aggressive filtering
+    FIXED & OPTIMIZED: Timeline features WITHOUT aggressive filtering
+    Always creates month_1_count through month_12_count regardless of data period
     """
     print("=" * 80)
     print(f"CREATING TIMELINE FEATURES (mode: {target_type})")
@@ -89,8 +90,13 @@ def create_timeline_features(
     # All customers have timeline data now
     result['timeline_data_available'] = 1
 
-    # Seasonality
+    # ========== OPTIMIZED MONTH FEATURES ==========
+    print("\n📅 Creating month features (optimized, always 1-12)...")
+
+    # Extract month
     df_work['month'] = df_work[safe_date_col].dt.month
+
+    # Create month counts - vectorized groupby
     month_counts = df_work.groupby([customer_col, 'month']).size().unstack(fill_value=0)
 
     # Handle all customers
@@ -99,28 +105,56 @@ def create_timeline_features(
     missing_customers = list(all_customers - processed_customers)
 
     if missing_customers:
-        missing_df = pd.DataFrame(index=missing_customers)
-        missing_df['avg_days_between_quotes'] = 0
-        missing_df['time_between_quotes_std'] = 0
-        missing_df['max_days_between_quotes'] = 0
-        missing_df['min_days_between_quotes'] = 0
-        missing_df['engagement_consistency'] = 0
-        missing_df['timeline_data_available'] = 0
+        # Create missing customers DataFrame with all features
+        missing_data = []
+        for customer_id in missing_customers:
+            customer_features = {'numero_compte': customer_id}
+            # Basic time features
+            customer_features.update({
+                'avg_days_between_quotes': 0,
+                'time_between_quotes_std': 0,
+                'max_days_between_quotes': 0,
+                'min_days_between_quotes': 0,
+                'engagement_consistency': 0,
+                'timeline_data_available': 0
+            })
+            # All 12 month features
+            for month in range(1, 13):
+                customer_features[f'month_{month}_count'] = 0
+            # Month statistics
+            customer_features.update({
+                'month_concentration': 0,
+                'peak_engagement_month': 0
+            })
+            missing_data.append(customer_features)
 
-        for month in range(1, 13):
-            missing_df[f'month_{month}_count'] = 0
-
+        missing_df = pd.DataFrame(missing_data).set_index('numero_compte')
         result = pd.concat([result, missing_df])
 
-    # Add month features
+    # ========== FIXED: Always create all 12 month columns ==========
     if not month_counts.empty:
+        # 1. Rename columns to month_X_count format
         month_counts = month_counts.add_prefix('month_').add_suffix('_count')
-        result['month_concentration'] = month_counts.max(axis=1) / month_counts.sum(axis=1).replace(0, 1)
-        result['peak_engagement_month'] = month_counts.idxmax(axis=1).str.replace('month_', '').str.replace('_count',
-                                                                                                            '').astype(
-            int)
-        result = result.merge(month_counts, left_index=True, right_index=True, how='left').fillna(0)
+
+        # 2. Ensure ALL 12 month columns exist (optimized with reindex)
+        all_month_cols = [f'month_{month}_count' for month in range(1, 13)]
+        month_counts = month_counts.reindex(columns=all_month_cols, fill_value=0)
+
+        # 3. Calculate month statistics (vectorized)
+        month_sums = month_counts.sum(axis=1).replace(0, 1)
+        result['month_concentration'] = month_counts.max(axis=1) / month_sums
+
+        # 4. Find peak month (optimized with numpy)
+        peak_month_idx = month_counts.values.argmax(axis=1)  # Returns 0-11
+        result['peak_engagement_month'] = peak_month_idx + 1  # Convert to 1-12
+
+        # 5. Merge month features (preserve index alignment)
+        result = pd.concat([result, month_counts], axis=1)
+
     else:
+        # No month data - create all 12 month columns with 0
+        for month in range(1, 13):
+            result[f'month_{month}_count'] = 0
         result['month_concentration'] = 0
         result['peak_engagement_month'] = 0
 
@@ -148,9 +182,19 @@ def create_timeline_features(
     if abs(conv_with_data - non_conv_with_data) > 0.1:
         print(f"  ⚠️  WARNING: Still imbalanced! But much better than 13.7% vs 91.0%")
 
+    # Verify month features are consistent
+    month_cols_present = [col for col in result.columns if col.startswith('month_') and col.endswith('_count')]
+    expected_month_cols = [f'month_{month}_count' for month in range(1, 13)]
+    missing = set(expected_month_cols) - set(month_cols_present)
+
     print(f"\n✅ Created {len(result.columns) - 2} timeline features")
     print(f"   Total customers: {len(result):,}")
     print(f"   Converters: {result['converted'].sum():,} ({result['converted'].mean():.1%})")
+
+    if missing:
+        print(f"⚠️  WARNING: Missing month features: {list(missing)}")
+    else:
+        print(f"✅ VERIFIED: All 12 month features present: month_1_count through month_12_count")
 
     return result
 

@@ -45,7 +45,8 @@ def create_features(df_quotes, dataset_name="New Features"):
     new_df, _ = create_efficiency_interaction_features(new_df)
     new_df, _ = create_engagement_interaction_features(new_df)
 
-    X_new = new_df.drop(columns=['numero_compte', 'converted'], errors='ignore')
+    X_new = new_df
+             #.drop(columns=['numero_compte', 'converted'], errors='ignore')
     X_new_clean, y_new_clean = prepare_features(X_new, y_new, dataset_name)
     df_features = X_new_clean.copy()
     df_features['converted'] = y_new_clean

@@ -17,13 +17,9 @@ def create_customer_features(
         discount_col: str = 'mt_remise_exceptionnelle_ht',
         ttc_col: str = 'mt_ttc_apres_aide_devis'
 ) -> pd.DataFrame:
-    """
-    OPTIMIZED VERSION - Same logic but 2-3x faster
-    """
     print(f"Creating OPTIMIZED customer features (mode: {target_type})...")
     start_time = time.time()
 
-    # Make a copy and convert date
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
 

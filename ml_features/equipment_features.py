@@ -137,16 +137,16 @@ def create_equipment_features(df, first_purchase_dates=None):
     season_counts = df_season.groupby('numero_compte').sum().reset_index()
 
     # Calculate season ratios
-    total_seasons = season_counts[['season_winter', 'season_summer', 'season_year_round']].sum(axis=1)
-
-    for season in ['winter', 'summer', 'year_round']:
-        col = f'season_{season}'
-        if col in season_counts.columns:
-            season_counts[f'{season}_equipment_ratio'] = season_counts[col] / total_seasons.replace(0, 1)
+    # total_seasons = season_counts[['season_winter', 'season_summer', 'season_year_round']].sum(axis=1)
+    #
+    # for season in ['winter', 'summer', 'year_round']:
+    #     col = f'season_{season}'
+    #     if col in season_counts.columns:
+    #         season_counts[f'{season}_equipment_ratio'] = season_counts[col] / total_seasons.replace(0, 1)
 
     # Primary season focus
-    season_cols = [c for c in season_counts.columns if c.startswith('season_') and c != 'season_nan']
-    season_counts['primary_season_focus'] = season_counts[season_cols].idxmax(axis=1).str.replace('season_', '')
+    # season_cols = [c for c in season_counts.columns if c.startswith('season_') and c != 'season_nan']
+    # season_counts['primary_season_focus'] = season_counts[season_cols].idxmax(axis=1).str.replace('season_', '')
 
     # ========== MERGE ALL GROUP STATS ==========
     print("🔄 Merging aggregated features...")
@@ -175,31 +175,31 @@ def create_equipment_features(df, first_purchase_dates=None):
     # which could be across first purchase boundary
 
     # Feature 3: Seasonal mix (entropy-based) - SAFE
-    def calculate_season_entropy(row):
-        seasons = ['winter', 'summer', 'year_round']
-        counts = [row.get(f'season_{s}', 0) for s in seasons]
-        total = sum(counts)
+    # def calculate_season_entropy(row):
+    #     seasons = ['winter', 'summer', 'year_round']
+    #     counts = [row.get(f'season_{s}', 0) for s in seasons]
+    #     total = sum(counts)
+    #
+    #     if total == 0:
+    #         return 0
+    #
+    #     proportions = [c / total for c in counts if c > 0]
+    #     if len(proportions) <= 1:
+    #         return 0
+    #
+    #     entropy = -sum(p * np.log(p) for p in proportions)
+    #     max_entropy = np.log(len(proportions))
+    #     return entropy / max_entropy
 
-        if total == 0:
-            return 0
-
-        proportions = [c / total for c in counts if c > 0]
-        if len(proportions) <= 1:
-            return 0
-
-        entropy = -sum(p * np.log(p) for p in proportions)
-        max_entropy = np.log(len(proportions))
-        return entropy / max_entropy
-
-    result['seasonal_equipment_mix'] = result.apply(calculate_season_entropy, axis=1)
+    # result['seasonal_equipment_mix'] = result.apply(calculate_season_entropy, axis=1)
 
     # Feature 4: Binary season indicators - SAFE
-    for season in ['winter', 'summer']:
-        result[f'has_{season}_equipment'] = (result[f'season_{season}'] > 0).astype(int)
+    # for season in ['winter', 'summer']:
+    #     result[f'has_{season}_equipment'] = (result[f'season_{season}'] > 0).astype(int)
 
-    result['has_multi_season'] = (
-            (result[['season_winter', 'season_summer', 'season_year_round']] > 0).sum(axis=1) > 1
-    ).astype(int)
+    # result['has_multi_season'] = (
+    #         (result[['season_winter', 'season_summer', 'season_year_round']] > 0).sum(axis=1) > 1
+    # ).astype(int)
 
     # Feature 5: Equipment maturity level - MODIFIED to be SAFE
     # Only uses pre-first-purchase data
@@ -209,11 +209,11 @@ def create_equipment_features(df, first_purchase_dates=None):
     maturity_components.append(np.minimum(result['latest_complexity'] / 4, 1))
 
     # Component 2: Season diversity
-    maturity_components.append(np.select(
-        [result['has_multi_season'] == 1],
-        [0.7],
-        default=0.3
-    ))
+    # maturity_components.append(np.select(
+    #     [result['has_multi_season'] == 1],
+    #     [0.7],
+    #     default=0.3
+    # ))
 
     # Component 3: Equipment variety (balanced is best)
     maturity_components.append(np.select(
@@ -238,15 +238,15 @@ def create_equipment_features(df, first_purchase_dates=None):
     # Feature 6: Strategy signals - MODIFIED to be SAFE
     result['likely_replacement'] = ((result['equipment_family_consistency'] == 1)).astype(int)
 
-    result['likely_system_expansion'] = ((result['equipment_variety_count'] > 1) &
-                                         (result['has_multi_season'] == 1)).astype(int)
+    # result['likely_system_expansion'] = ((result['equipment_variety_count'] > 1) &
+    #                                      (result['has_multi_season'] == 1)).astype(int)
 
     result['early_technology_adopter'] = result['has_high_tech']
 
     # Feature 7: Seasonal concentration - SAFE
-    result['seasonal_concentration'] = result[['season_winter', 'season_summer', 'season_year_round']].max(axis=1) / \
-                                       result[['season_winter', 'season_summer', 'season_year_round']].sum(
-                                           axis=1).replace(0, 1)
+    # result['seasonal_concentration'] = result[['season_winter', 'season_summer', 'season_year_round']].max(axis=1) / \
+    #                                    result[['season_winter', 'season_summer', 'season_year_round']].sum(
+    #                                        axis=1).replace(0, 1)
 
     # ========== FILL MISSING VALUES ==========
     print("🧹 Cleaning up missing values...")
@@ -277,7 +277,7 @@ def create_equipment_features(df, first_purchase_dates=None):
             'seasonal_equipment_mix',
             'equipment_maturity_level',
             'equipment_variety_index',
-            'has_multi_season',
+            # 'has_multi_season',
             'early_technology_adopter'
         ]
 
