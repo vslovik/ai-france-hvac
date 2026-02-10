@@ -66,6 +66,7 @@ def prepare_features(X, y, dataset_name):
 
     # Handle categorical
     categorical_cols = X_clean.select_dtypes(include=['object']).columns
+    categorical_cols = [col for col in categorical_cols if col != 'numero_compte']
     for col in categorical_cols:
         X_clean[col] = X_clean[col].fillna('missing')
         le = LabelEncoder()
