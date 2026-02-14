@@ -1,4 +1,5 @@
 import plotly.graph_objects as go
+import wandb
 from plotly.subplots import make_subplots
 import ipywidgets as widgets
 from IPython.display import display
@@ -118,6 +119,19 @@ class FollowUpWidget:
 
         update()  # initial plot
         display(ui)
+
+        # table = wandb.Table(columns=["Scenario", "Plot"])
+        #
+        # for scen in self.OPTIONS:
+        #     fam = FollowUpWidget.OPTIONS[scen]["fam"]
+        #     data = self.compute_func(family=fam)
+        #     fig = make_fig(data, scen)
+        #     fig.show()
+        #     html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+        #
+        #     table.add_data(scen, wandb.Html(html))
+        #
+        # wandb.log({"follow_up_comparison": table})
 
 
 def show_follow_up_widget(compute_func, selected_ids):
