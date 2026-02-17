@@ -123,7 +123,7 @@ class FollowUpWidget:
         # table = wandb.Table(columns=["Scenario", "Plot"])
         #
         # for scen in self.OPTIONS:
-        #     fam = FollowUpWidget.OPTIONS[scen]["fam"]
+        #     fam = self.OPTIONS[scen]["fam"]
         #     data = self.compute_func(family=fam)
         #     fig = make_fig(data, scen)
         #     fig.show()
