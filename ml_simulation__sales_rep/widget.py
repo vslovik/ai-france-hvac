@@ -6,29 +6,55 @@ from IPython.display import display
 
 
 class SalesRepWidget:
-    OPTIONS = {
+    # Color mapping based on segment
+    SEGMENT_COLORS = {
+        'discount_sensitive': {
+            'light': '#fdae61',  # Light orange
+            'dark': '#ff7f0e',  # Dark orange
+            'name': '💰',
+            'emoji': '🟠'  # Orange circle emoji for dropdown
+        },
+        'value_sensitive': {
+            'light': '#98df8a',  # Light green
+            'dark': '#2ca02c',  # Dark green
+            'name': '🌟',
+            'emoji': '🟢'  # Green circle emoji for dropdown
+        },
+        'neutral': {
+            'light': '#6baed6',  # Light blue
+            'dark': '#1f77b4',  # Dark blue
+            'name': '🔵',
+            'emoji': '🔵'  # Blue circle emoji for dropdown
+        }
+    }
+
+    REP_OPTIONS = {
         "Commercial actuel": {
             "rep": None,
             "emoji": "📊",
-            "color": "#6baed6",
+            "color_emoji": "⬜",  # White circle for current
+            "display": "⬜ 📊 Commercial actuel",
             "title": "Commercial actuel"
         },
         "MARINA GUYOT": {
             "rep": "marina",
-            "emoji": "🟠",
-            "color": "#ff7f0e",
+            "emoji": "💰",
+            "color_emoji": "🟠",  # Orange circle matches discount-sensitive
+            "display": "🟠 💰 MARINA GUYOT (Discount-focused)",
             "title": "MARINA GUYOT (Discount-focused)"
         },
         "ELISABETH MACHADO": {
             "rep": "elisabeth",
-            "emoji": "🟢",
-            "color": "#2ca02c",
+            "emoji": "🌟",
+            "color_emoji": "🟢",  # Green circle matches value-sensitive
+            "display": "🟢 🌟 ELISABETH MACHADO (Value-focused)",
             "title": "ELISABETH MACHADO (Value-focused)"
         },
         "Clément TOUZAN": {
             "rep": "clement",
             "emoji": "🔵",
-            "color": "#1f77b4",
+            "color_emoji": "🔵",  # Blue circle matches neutral
+            "display": "🔵 🔹 Clément TOUZAN (Neutral)",
             "title": "Clément TOUZAN (Neutral)"
         },
     }
@@ -38,80 +64,93 @@ class SalesRepWidget:
         self.selected_ids = selected_ids
 
     def show(self):
-
-        # ─── Figure factory ───
-        def make_fig(data, key):
-            info = self.OPTIONS[key]
-            is_current = key == "Commercial actuel"
+        def make_figure(data, selected_key):
+            info = self.REP_OPTIONS[selected_key]
+            is_current = (selected_key == "Commercial actuel")
 
             fig = make_subplots(
-                1, len(self.selected_ids),
-                subplot_titles=[f"{str(cid)[:8]}<br><sub>{seg[:3]}</sub>"
-                                for cid, seg in zip(self.selected_ids, data['segments'])],
-                horizontal_spacing=0.14,
+                rows=1, cols=len(self.selected_ids),
+                subplot_titles=[f"{str(cid)[:8]}<br><sub>{data['regions'][i]}</sub>"
+                                for i, cid in enumerate(self.selected_ids)],
+                horizontal_spacing=0.15,
                 shared_yaxes=True
             )
 
             for i in range(len(self.selected_ids)):
-                base_val = data['base'][i]
-                new_val = data['new'][i]
+                b = data['base'][i]
+                n = data['new'][i]
                 segment = data['segments'][i]
-                current_rep = data['current_reps'][i]
-                delta = new_val - base_val
+                delta = n - b
 
-                # Determine colors based on segment
-                if segment == 'discount_sensitive':
-                    light_color = '#fdae61'
-                    dark_color = '#ff7f0e'
-                elif segment == 'value_sensitive':
-                    light_color = '#98df8a'
-                    dark_color = '#2ca02c'
-                else:  # neutral
-                    light_color = '#6baed6'
-                    dark_color = '#1f77b4'
+                # Get colors based on segment
+                colors = self.SEGMENT_COLORS[segment]
 
-                # Left bar - current rep
+                # Left bar – current situation (always light color)
                 fig.add_trace(
-                    go.Bar(x=['Actuel'], y=[base_val],
-                           marker_color=light_color,
-                           text=f"{base_val:.3f}", textposition='auto',
-                           hovertemplate=f"Commercial actuel: {current_rep}<br>{base_val:.3f}<extra></extra>"),
+                    go.Bar(
+                        x=['Actuel'],
+                        y=[b],
+                        marker_color=colors['light'],
+                        text=f"{b:.3f}",
+                        textposition='auto',
+                        hovertemplate=(
+                            f"<b>{self.selected_ids[i][:8]}</b><br>"
+                            f"Segment: {segment}<br>"
+                            f"Commercial: {data['current_reps'][i]}<br>"
+                            f"Probabilité: {b:.3f}<extra></extra>"
+                        )
+                    ),
                     row=1, col=i + 1
                 )
 
-                # Right bar - with new rep
-                bar_color = light_color if is_current or delta == 0 else (dark_color if delta > 0 else '#d62728')
+                # Right bar – with new rep
+                # Dark if improved, light if not
+                bar_color = colors['dark'] if delta > 0 else colors['light']
 
                 fig.add_trace(
-                    go.Bar(x=[key], y=[new_val],
-                           marker_color=bar_color,
-                           text=f"{new_val:.3f}" + ("" if is_current else f"<br>{delta:+.3f}"),
-                           textposition='auto',
-                           hovertemplate=f"{key}<br>{new_val:.3f}" + (
-                               "" if is_current else f" ({delta:+.3f})") + "<extra></extra>"),
+                    go.Bar(
+                        x=[selected_key],
+                        y=[n],
+                        marker_color=bar_color,
+                        text=f"{n:.3f}" + ("" if is_current else f"<br>{delta:+.3f}"),
+                        textposition='auto',
+                        hovertemplate=(
+                                f"{selected_key}<br>{n:.3f}" +
+                                ("" if is_current else f" ({delta:+.3f})") +
+                                "<extra></extra>"
+                        )
+                    ),
                     row=1, col=i + 1
                 )
 
-            delta_txt = f"(Δ moyen {data['delta_avg']:+.3f})" if not is_current else ""
-            title = f"{info['emoji']} {info['title']} {delta_txt}"
+            delta_text = f"(Δ moyen {data['delta_avg']:+.3f})" if not is_current else ""
+
+            # Use color_emoji in title for visual consistency
+            title = f"{info['color_emoji']} {info['emoji']} {info['title']} {delta_text}"
 
             fig.update_layout(
-                title_text=title,
+                title=dict(text=title, font_size=18),
                 height=540,
                 template="plotly_white",
                 barmode='group',
                 margin=dict(t=110, b=60, l=50, r=30),
                 showlegend=False
             )
-            fig.update_yaxes(title_text="Probabilité de conversion", range=[0, 0.9])
+
+            fig.update_yaxes(
+                title_text="Probabilité de conversion",
+                range=[0, 0.9]
+            )
+            fig.update_xaxes(title_text="")
+
             return fig
 
-        # ─── Widgets ───
+        # Widgets - Use display field with color emoji
         dropdown = widgets.Dropdown(
-            options=list(self.OPTIONS.keys()),
+            options=[(info['display'], key) for key, info in self.REP_OPTIONS.items()],
             value="Commercial actuel",
             description='Commercial :',
-            layout={'width': '380px'}
+            layout={'width': '500px'}  # Wider for colored emoji
         )
 
         output = widgets.Output()
@@ -120,21 +159,21 @@ class SalesRepWidget:
             with output:
                 output.clear_output(wait=True)
                 key = dropdown.value
-                rep = self.OPTIONS[key]['rep']
+                rep = self.REP_OPTIONS[key]['rep']
                 data = self.compute_func(rep_type=rep)
-                fig = make_fig(data, key)
+                fig = make_figure(data, key)
                 display(fig)
 
         dropdown.observe(update, names='value')
 
-        # Show UI
-        ui = widgets.VBox([
+        # Initial plot
+        update()
+
+        # Layout
+        display(widgets.VBox([
             widgets.HBox([dropdown]),
             output
-        ])
-
-        update()  # initial plot
-        display(ui)
+        ]))
 
 
 def show_sales_rep_widget(compute_func, selected_ids):

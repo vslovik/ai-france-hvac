@@ -31,6 +31,8 @@ class PriceMatchSimulation:
             product = quotes['famille_equipement_produit'].iloc[
                 0] if 'famille_equipement_produit' in quotes.columns and len(quotes) > 0 else 'Unknown'
             products.append(product)
+
+
             price = quotes['mt_apres_remise_ht_devis'].iloc[0] if 'mt_apres_remise_ht_devis' in quotes.columns and len(
                 quotes) > 0 else 0
             prices.append(price)

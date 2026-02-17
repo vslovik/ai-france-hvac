@@ -21,17 +21,25 @@ class DiscountSimulation:
         baseline_results = []
 
         for cust_id in self.sampled_ids:
+
+
             quotes = self.df_simulation[self.df_simulation['numero_compte'] == cust_id].copy()
             prob = safe_predict(cust_id, quotes, self.pred_model, self.feature_names)
             baseline_results.append({
                 'customer_id': cust_id,
                 'baseline_prob': prob
             })
+
+
+
             reg = quotes['nom_region'].iloc[0] if 'nom_region' in quotes.columns and len(quotes) > 0 else 'Unknown'
             regions.append(reg)
+
             product = quotes['famille_equipement_produit'].iloc[
                 0] if 'famille_equipement_produit' in quotes.columns and len(quotes) > 0 else 'Unknown'
             products.append(product)
+
+
             price = quotes['mt_apres_remise_ht_devis'].iloc[0] if 'mt_apres_remise_ht_devis' in quotes.columns and len(
                 quotes) > 0 else 0
             prices.append(price)

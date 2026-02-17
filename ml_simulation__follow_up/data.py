@@ -14,9 +14,6 @@ class FollowUpSimulation:
         self.sampled_ids = sampled_ids
 
     def get_compute_function(self):
-        # Create baseline dataframe and dict
-        # Also keep region list in same order
-        #print("\n=== CREATING BASELINE PREDICTIONS ===")
         regions = []
         products = []
         baseline_results = []
@@ -34,15 +31,9 @@ class FollowUpSimulation:
             products.append(product)
 
         baseline_df = pd.DataFrame(baseline_results)
-        #print(baseline_df)
         baseline_dict = dict(zip(baseline_df['customer_id'], baseline_df['baseline_prob']))
-        # Convert baseline values to array (in the order of sampled_ids)
         baseline_array = np.array([baseline_dict[cid] for cid in self.sampled_ids])
 
-        # df_sim, selected_ids ---> baseline_array, regions, products
-        # baseline_array, regions, products, model, df_sim, safe_predict, selected_ids
-
-        # ─── Compute function ───
         def compute_func(family=None):
             model_scen = self.pred_model  # ← replace with real model if dropout affects it
 

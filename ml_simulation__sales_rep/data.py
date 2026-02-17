@@ -1,9 +1,4 @@
 import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import ipywidgets as widgets
-from IPython.display import display
 
 from ml_inference.inference import safe_predict
 
@@ -18,20 +13,16 @@ class SalesRepSimulation:
         self.sampled_ids = sampled_ids
 
     def get_compute_function(self):
-        # Create baseline dataframe and dict
+        # Store quotes for on-the-fly calculation
+        self.quotes_list = []
         regions = []
         products = []
         prices = []
         current_reps = []
-        baseline_results = []
 
         for cust_id in self.sampled_ids:
             quotes = self.df_simulation[self.df_simulation['numero_compte'] == cust_id].copy()
-            prob = self.safe_predict(cust_id, quotes, self.pred_model, self.feature_names)
-            baseline_results.append({
-                'customer_id': cust_id,
-                'baseline_prob': prob
-            })
+            self.quotes_list.append(quotes)
 
             reg = quotes['nom_region'].iloc[0] if 'nom_region' in quotes.columns and len(quotes) > 0 else 'Unknown'
             regions.append(reg)
@@ -48,17 +39,18 @@ class SalesRepSimulation:
                 quotes) > 0 else 'Unknown'
             current_reps.append(current_rep)
 
-        baseline_df = pd.DataFrame(baseline_results)
-        baseline_dict = dict(zip(baseline_df['customer_id'], baseline_df['baseline_prob']))
-        baseline_array = np.array([baseline_dict[cid] for cid in self.sampled_ids])
-
-        # Get predictions for each rep type
+        # Pre-compute segment classification (still needed for logic, but not colors)
+        baseline_probs = []
         marina_probs = []
         elisabeth_probs = []
         clement_probs = []
 
-        for cust_id in self.sampled_ids:
-            quotes = self.df_simulation[self.df_simulation['numero_compte'] == cust_id].copy()
+        for i, cust_id in enumerate(self.sampled_ids):
+            quotes = self.quotes_list[i].copy()
+
+            # Baseline
+            base_prob = self.safe_predict(cust_id, quotes, self.pred_model, self.feature_names)
+            baseline_probs.append(base_prob)
 
             # MARINA (Discount - 2.5%)
             m_quotes = quotes.copy()
@@ -81,7 +73,8 @@ class SalesRepSimulation:
             c_quotes['mt_apres_remise_ht_devis'] = c_price * (1 - 0.015)
             clement_probs.append(self.safe_predict(cust_id, c_quotes, self.pred_model, self.feature_names))
 
-        # Determine segments (simplified rule-based for display)
+        # Determine segments (for widget to use)
+        baseline_array = np.array(baseline_probs)
         segments = []
         for i in range(len(self.sampled_ids)):
             if marina_probs[i] - baseline_array[i] > elisabeth_probs[i] - baseline_array[i] + 0.01:
@@ -91,41 +84,43 @@ class SalesRepSimulation:
             else:
                 segments.append('neutral')
 
-        # Color mapping
-        segment_colors = {
-            'discount_sensitive': '#ff7f0e',  # Orange
-            'value_sensitive': '#2ca02c',  # Green
-            'neutral': '#1f77b4'  # Blue
-        }
+        def compute_func(rep_type=None):
+            """Calculate probabilities on-the-fly"""
+            baseline_probs = []
+            new_probs = []
 
-        segment_colors_light = {
-            'discount_sensitive': '#fdae61',  # Light orange
-            'value_sensitive': '#98df8a',  # Light green
-            'neutral': '#6baed6'  # Light blue
-        }
+            for i, cust_id in enumerate(self.sampled_ids):
+                quotes = self.quotes_list[i].copy()
 
-        color_dark_vals = [segment_colors[seg] for seg in segments]
-        color_light_vals = [segment_colors_light[seg] for seg in segments]
+                # Calculate baseline (current situation)
+                base_prob = self.safe_predict(cust_id, quotes, self.pred_model, self.feature_names)
+                baseline_probs.append(base_prob)
 
-        # ─── Compute function ───
-        def compute_func(rep_type=None):  # rep_type: None (current), 'marina', 'elisabeth', 'clement'
-            model_scen = self.pred_model
-            new_list = []
+                # Calculate new probability based on rep type
+                if rep_type is None:
+                    new_probs.append(base_prob)
+                else:
+                    mod_quotes = quotes.copy()
 
-            if rep_type is None:
-                new_list = baseline_array.tolist()
-            else:
-                for i, cid in enumerate(self.sampled_ids):
                     if rep_type == 'marina':
-                        new_list.append(marina_probs[i])
+                        price = mod_quotes['mt_apres_remise_ht_devis'].sum()
+                        mod_quotes['mt_remise_exceptionnelle_ht'] = -price * 0.025
+                        mod_quotes['mt_apres_remise_ht_devis'] = price * (1 - 0.025)
                     elif rep_type == 'elisabeth':
-                        new_list.append(elisabeth_probs[i])
+                        price = mod_quotes['mt_apres_remise_ht_devis'].sum()
+                        mod_quotes['mt_remise_exceptionnelle_ht'] = -price * 0.006
+                        mod_quotes['mt_apres_remise_ht_devis'] = price * (1 - 0.006)
                     elif rep_type == 'clement':
-                        new_list.append(clement_probs[i])
-                    else:
-                        new_list.append(baseline_array[i])
+                        price = mod_quotes['mt_apres_remise_ht_devis'].sum()
+                        mod_quotes['mt_remise_exceptionnelle_ht'] = -price * 0.015
+                        mod_quotes['mt_apres_remise_ht_devis'] = price * (1 - 0.015)
 
-            new_array = np.array(new_list)
+                    new_prob = self.safe_predict(cust_id, mod_quotes, self.pred_model, self.feature_names)
+                    new_probs.append(new_prob)
+
+            baseline_array = np.array(baseline_probs)
+            new_array = np.array(new_probs)
+
             return {
                 'base': baseline_array,
                 'new': new_array,
@@ -133,9 +128,7 @@ class SalesRepSimulation:
                 'products': products,
                 'prices': prices,
                 'current_reps': current_reps,
-                'segments': segments,
-                'color_light': color_light_vals,
-                'color_dark': color_dark_vals,
+                'segments': segments,  # Pass segments to widget
                 'delta_avg': np.mean(new_array - baseline_array) if rep_type is not None else 0.0
             }
 
