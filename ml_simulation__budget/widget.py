@@ -103,7 +103,7 @@ class BudgetAlternativeWidget:
                 output.clear_output(wait=True)
                 key = dropdown.value
                 scenario = self.OPTIONS[key]['scenario']
-                data = self.compute_func(scenario=scenario)
+                data = self.compute_func(family=scenario)
                 fig = make_fig(data, key)
                 display(fig)
 
