@@ -48,63 +48,95 @@ class BudgetAlternativeSampler:
         print("\n📊 PRODUCT PRICE TIERS (from simulation pool):")
         print(df_stats.to_string(index=False))
 
-        # 6. Target customers with PREMIUM products (top 30% price)
+        # ===== CORRECTED TARGETING =====
+        # Target MID-RANGE customers (30th-70th percentile)
+        # These are the ones who might consider a budget option
+        # Premium customers (>p70) should NOT be targeted for budget
+
         rows = []
         for cust_id, group in df_eligible.groupby('numero_compte'):
             # Take first quote
             quote = group.iloc[0]
             product = quote['famille_equipement_produit']
             price = quote['mt_apres_remise_ht_devis']
+            quote_count = len(group)
 
-            if product in product_prices and price >= product_prices[product]['p70']:  # Premium tier
-                rows.append({
-                    'customer_id': cust_id,
-                    'product': product,
-                    'price': price,
-                    'tier': 'premium',
-                    'budget_price': product_prices[product]['p30']  # Target budget price
-                })
+            if product in product_prices:
+                p30 = product_prices[product]['p30']
+                p70 = product_prices[product]['p70']
 
-        df_candidates = pd.DataFrame(rows)
-        print(f"\nPremium product candidates: {len(df_candidates)}")
-
-        if len(df_candidates) == 0:
-            print("⚠️ No premium candidates found! Falling back to standard pricing.")
-            # Fallback: take standard customers
-            for cust_id, group in df_eligible.groupby('numero_compte'):
-                quote = group.iloc[0]
-                product = quote['famille_equipement_produit']
-                price = quote['mt_apres_remise_ht_devis']
-                if product in product_prices and price >= product_prices[product]['p30']:
+                # Target MID-RANGE customers (price between p30 and p70)
+                if p30 <= price <= p70:
+                    # Also prefer customers who are shopping around (multiple quotes)
+                    # They're more price-sensitive
                     rows.append({
                         'customer_id': cust_id,
                         'product': product,
                         'price': price,
-                        'tier': 'standard',
-                        'budget_price': product_prices[product]['p30']
+                        'tier': 'mid_range',
+                        'quote_count': quote_count,
+                        'budget_price': p30,  # Target budget price (p30)
+                        'savings': price - p30,
+                        'savings_pct': (price - p30) / price * 100
                     })
+
+        df_candidates = pd.DataFrame(rows)
+        print(f"\n🎯 MID-RANGE candidates (p30-p70): {len(df_candidates)}")
+
+        # If not enough mid-range customers, broaden to include
+        # customers just above p70 who might still consider budget
+        if len(df_candidates) < 10:
+            print("⚠️ Few mid-range candidates, broadening to include lower-premium...")
+            for cust_id, group in df_eligible.groupby('numero_compte'):
+                quote = group.iloc[0]
+                product = quote['famille_equipement_produit']
+                price = quote['mt_apres_remise_ht_devis']
+                quote_count = len(group)
+
+                if product in product_prices:
+                    p70 = product_prices[product]['p70']
+                    p85 = product_prices[product]['p70'] * 1.15  # Approximate 85th percentile
+
+                    # Include customers just above p70 (still potentially interested in savings)
+                    if p70 < price <= p85:
+                        rows.append({
+                            'customer_id': cust_id,
+                            'product': product,
+                            'price': price,
+                            'tier': 'premium_light',
+                            'quote_count': quote_count,
+                            'budget_price': product_prices[product]['p30'],
+                            'savings': price - product_prices[product]['p30'],
+                            'savings_pct': (price - product_prices[product]['p30']) / price * 100
+                        })
             df_candidates = pd.DataFrame(rows)
+            print(f"  → Now {len(df_candidates)} candidates including premium-light")
 
         # 7. Sample 5 customers with diverse products
         if len(df_candidates) >= 5:
+            # Prioritize customers with multiple quotes (more price-sensitive)
+            df_candidates = df_candidates.sort_values('quote_count', ascending=False)
+
             # Try to get diverse products
-            df_diverse = df_candidates.sort_values('customer_id') \
-                .drop_duplicates(subset='product', keep='first')
+            df_diverse = df_candidates.drop_duplicates(subset='product', keep='first')
 
             if len(df_diverse) >= 5:
-                sample = df_diverse.sample(n=5, random_state=self.random_state)
+                sample = df_diverse.head(5)
             else:
-                # Mix of diverse + random
+                # Mix of diverse + highest quote count
                 remaining = df_candidates[~df_candidates['customer_id'].isin(df_diverse['customer_id'])]
                 needed = 5 - len(df_diverse)
-                extra = remaining.sample(n=needed, random_state=self.random_state)
+                remaining = remaining.sort_values('quote_count', ascending=False)
+                extra = remaining.head(needed)
                 sample = pd.concat([df_diverse, extra])
         else:
             # Not enough candidates, take what we have
             sample = df_candidates
 
         print("\n🎯 SELECTED BUDGET ALTERNATIVE CANDIDATES:")
-        print(sample[['customer_id', 'product', 'price', 'tier', 'budget_price']].to_string(index=False))
+        print(
+            sample[['customer_id', 'product', 'price', 'tier', 'quote_count', 'budget_price', 'savings_pct']].to_string(
+                index=False))
 
         selected_ids = sample['customer_id'].tolist()
         print(f"\nSelected IDs: {selected_ids}")
