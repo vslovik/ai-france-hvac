@@ -127,18 +127,18 @@ class PriceMatchWidget:
         update()  # initial plot
         display(ui)
 
-        # table = wandb.Table(columns=["Scenario", "Plot"])
-        #
-        # for scen in self.OPTIONS:
-        #     fam = self.OPTIONS[scen]["fam"]
-        #     data = self.compute_func(family=fam)
-        #     fig = make_fig(data, scen)
-        #     fig.show()
-        #     html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-        #
-        #     table.add_data(scen, wandb.Html(html))
-        #
-        # wandb.log({"follow_up_comparison": table})
+        table = wandb.Table(columns=["Scenario", "Plot"])
+
+        for scen in self.OPTIONS:
+            fam = self.OPTIONS[scen]["fam"]
+            data = self.compute_func(family=fam)
+            fig = make_fig(data, scen)
+            fig.show()
+            html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+            table.add_data(scen, wandb.Html(html))
+
+        wandb.log({"follow_up_comparison": table})
 
 
 def show_price_match_widget(compute_func, selected_ids):
