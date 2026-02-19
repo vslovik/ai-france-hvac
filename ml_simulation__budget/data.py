@@ -44,8 +44,7 @@ class BudgetSimulation(Simulation):
                 val = data["base"][i]
                 budget_price = df_quotes['mt_apres_remise_ht_devis'].sum()
                 if family is not None:
-                    df_quotes_mod = df_quotes.copy()
-                    if len(df_quotes_mod) > 0:
+                    if len(df_quotes) > 0:
                         # Apply budget price (30th percentile)
                         df_quotes_mod = self.apply_change(self.df_simulation, cid, family)
                         budget_price = df_quotes_mod['mt_apres_remise_ht_devis'].sum()

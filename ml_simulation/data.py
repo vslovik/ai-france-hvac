@@ -31,6 +31,7 @@ class Simulation:
         products = []
         prices = []
         tiers = []
+        current_discounts = []
         baseline_results = []
         for cust_id in self.sampled_ids:
 
@@ -53,6 +54,11 @@ class Simulation:
                 tiers.append('premium' if price > self.PRODUCT_TIERS[product]['p30'] else 'standard')
             else:
                 tiers.append('unknown')
+            if 'mt_remise_exceptionnelle_ht' in quotes.columns:
+                current_disc = abs(quotes['mt_remise_exceptionnelle_ht'].sum())
+            else:
+                current_disc = 0
+            current_discounts.append(current_disc)
 
         baseline_df = pd.DataFrame(baseline_results)
         baseline_dict = dict(zip(baseline_df['customer_id'], baseline_df['baseline_prob']))
@@ -64,7 +70,8 @@ class Simulation:
             'regions': regions,
             'products': products,
             'prices': prices_array,
-            'tiers': tiers
+            'tiers': tiers,
+            'current_discounts': np.array(current_discounts)
         }
 
     def get_compute_function(self):

@@ -126,7 +126,7 @@ class DiscountWidget:
                 output.clear_output(wait=True)
                 key = dropdown.value
                 discount = self.OPTIONS[key]['discount']
-                data = self.compute_func(discount_percent=discount)
+                data = self.compute_func(family=discount)
                 fig = make_fig(data, key)
                 display(fig)
 

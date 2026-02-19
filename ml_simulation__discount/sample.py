@@ -1,5 +1,7 @@
 import pandas as pd
 
+from ml_simulation.segment import get_nonconverted_customers
+
 
 class DiscountSampler:
     def __init__(self, df_sim, random_state=4477):
@@ -7,19 +9,11 @@ class DiscountSampler:
         self.random_state = random_state
 
     def sample(self):
-        # 1. Find non-converted customers
-        sim_conv = self.df_sim.groupby('numero_compte')['fg_devis_accepte'].max()
-        non_converted = sim_conv[sim_conv == 0].index
-
-        # 2. Filter the original dataframe once
-        df_nonconv = self.df_sim[self.df_sim['numero_compte'].isin(non_converted)].copy()
-
-        # 3. Add quote count per customer
-        df_nonconv['quote_count'] = df_nonconv.groupby('numero_compte')['numero_compte'].transform('count')
+        df_not_converted = get_nonconverted_customers(self.df_sim)
 
         # 4. Add discount information
         discount_data = []
-        for cust_id, group in df_nonconv.groupby('numero_compte'):
+        for cust_id, group in df_not_converted.groupby('numero_compte'):
             total_price = group['mt_apres_remise_ht_devis'].sum()
 
             # Calculate current discount
@@ -39,7 +33,7 @@ class DiscountSampler:
             })
 
         df_candidates = pd.DataFrame(discount_data)
-        print(f"Non-converted customers: {len(non_converted)}")
+
         print(f"Candidates with price data: {len(df_candidates)}")
 
         # 5. Define sampling strategy

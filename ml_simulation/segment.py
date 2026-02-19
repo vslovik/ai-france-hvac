@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from ml_simulation.util import get_product_price_tiers
 
