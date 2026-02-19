@@ -38,12 +38,13 @@ class FollowUpSimulation(Simulation):
                 'regions': data["regions"],
                 'products': data["products"],
                 'prices': data["prices"],
-                'delta_avg': np.mean(new_array - data["base"]) if family is not None else 0.0
+                'tiers': data["tiers"],
+                'delta_avg': np.mean(new_array - data["base"]) if family is not None else 0.0,
             }
 
         return compute_func
 
 
-def get_simulation_compute_function(pred_model, feature_names, df_simulation, sampled_ids):
+def get_follow_up_compute_function(pred_model, feature_names, df_simulation, sampled_ids):
     simulation = FollowUpSimulation(pred_model, feature_names, safe_predict, df_simulation, sampled_ids)
     return simulation.get_compute_function()

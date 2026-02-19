@@ -47,7 +47,7 @@ class FollowUpWidget:
 
             fig = make_subplots(
                 1, len(self.selected_ids),
-                subplot_titles=[f"{str(cid)[:8]}<br><sub>{r}</sub>" for cid, r in zip(self.selected_ids, data['regions'])],
+                subplot_titles=[f"{str(cid)[:10]}<br><sub>{r}</sub>" for cid, r in zip(self.selected_ids, data['regions'])],
                 horizontal_spacing=0.14,
                 shared_yaxes=True
             )
@@ -59,7 +59,7 @@ class FollowUpWidget:
             for i in range(len(self.selected_ids)):
                 base_val = data['base'][i]
                 new_val = data['new'][i]
-                product = data['families'][i]
+                product = data['products'][i]
                 delta = new_val - base_val
 
                 fig.add_trace(

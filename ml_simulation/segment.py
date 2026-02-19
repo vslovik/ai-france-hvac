@@ -19,6 +19,17 @@ def get_nonconverted_customers(df_simulation):
     return df_eligible
 
 
+def get_single_quote_customers(df_eligible):
+    df_not_converted = get_nonconverted_customers(df_eligible)
+    df_eligible = df_not_converted[df_not_converted['quote_count'] == 1]
+    df_eligible = df_eligible.rename(columns={
+        'numero_compte': 'customer_id',
+        'famille_equipement_produit': 'product',
+        'mt_apres_remise_ht_devis': 'price'
+    })
+    return df_eligible
+
+
 def get_mid_range_quote_customers(df_eligible):
     product_prices = get_product_price_tiers(df_eligible)
 

@@ -24,6 +24,7 @@ class Simulation:
         self.safe_predict = safe_predict
         self.df_simulation = df_simulation
         self.sampled_ids = sampled_ids
+        print(f"Initialized Simulation with {len(sampled_ids)} sampled IDs.")
 
     def get_data(self):
         regions = []

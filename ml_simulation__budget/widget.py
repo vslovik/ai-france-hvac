@@ -32,7 +32,7 @@ class BudgetAlternativeWidget:
 
             fig = make_subplots(
                 1, len(self.selected_ids),
-                subplot_titles=[f"{str(cid)[:8]}<br><sub>{p[:10]}</sub>" for cid, p in
+                subplot_titles=[f"{str(cid)[:10]}<br><sub>{p[:10]}</sub>" for cid, p in
                                 zip(self.selected_ids, data['products'])],
                 horizontal_spacing=0.14,
                 shared_yaxes=True

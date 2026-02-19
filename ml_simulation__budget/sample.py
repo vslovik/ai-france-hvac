@@ -1,5 +1,6 @@
 import random
-from ml_simulation.sample import sample_with_product_diversity
+
+from ml_simulation.sample import sample_diverse_multi_quote
 from ml_simulation.segment import get_mid_range_quote_customers, get_nonconverted_customers
 
 
@@ -15,7 +16,7 @@ class BudgetAlternativeSampler:
 
     def sample(self):
         random.seed(self.random_state)
-        sample = sample_with_product_diversity(self.get_eligible_segment(), n=5, random_state=self.random_state)
+        sample = sample_diverse_multi_quote(self.get_eligible_segment(), n=5, random_state=self.random_state)
 
         print("\n🎯 SELECTED BUDGET ALTERNATIVE CANDIDATES:")
         print(
