@@ -46,7 +46,7 @@ class CrossSellWidget:
 
             fig = make_subplots(
                 rows=1, cols=len(self.selected_ids),
-                subplot_titles=[f"{str(cid)[:8]}<br><sub>{r}</sub>"
+                subplot_titles=[f"{str(cid)[:10]}<br><sub>{r}</sub>"
                                 for cid, r in zip(self.selected_ids, data['regions'])],
                 horizontal_spacing=0.15,
                 shared_yaxes=True

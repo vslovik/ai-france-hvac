@@ -16,7 +16,7 @@ class BudgetAlternativeSampler:
 
     def sample(self):
         random.seed(self.random_state)
-        sample =  sample_diverse_products_multi_quote__top_quotes(self.get_eligible_segment(), n=5, random_state=self.random_state)
+        sample = sample_diverse_products_multi_quote__top_quotes(self.get_eligible_segment(), n=5, random_state=self.random_state)
 
         print("\n🎯 SELECTED BUDGET ALTERNATIVE CANDIDATES:")
         print(

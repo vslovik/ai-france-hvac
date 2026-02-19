@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+
+from ml_simulation.constrants import HEAT_PUMP, STOVE, COLD_REGIONS
 from ml_simulation.util import get_product_price_tiers
 
 
@@ -29,6 +31,57 @@ def get_single_quote_customers(df_simulation):
         'mt_apres_remise_ht_devis': 'price'
     })
     return df_eligible
+
+
+def get_customers_with_heat_pump_quote_with_no_stove_quote_in_cold_region_(df_simulation: pd.DataFrame) -> pd.Series:
+    df = get_nonconverted_customers(df_simulation)
+
+    mask = (
+            df.groupby('numero_compte')['famille_equipement_produit']
+            .transform(lambda x: HEAT_PUMP in x.values and STOVE not in x.values)
+            &
+            df['nom_region'].isin(COLD_REGIONS)
+    )
+
+    return df[mask]['numero_compte'].drop_duplicates()
+
+
+def get_customers_with_heat_pump_quote_with_no_stove_quote_in_cold_region(df_simulation):
+    df_not_converted = get_nonconverted_customers(df_simulation)
+
+    if df_not_converted.empty:
+        print("⚠️ No non-converted customers found!")
+        return pd.DataFrame(columns=['customer_id', 'region', 'quote_count', 'quotes'])
+
+    agg = (
+        df_not_converted
+        .groupby('numero_compte')
+        .agg(
+            quote_count=('numero_compte', 'size'),
+            has_heat_pump=('famille_equipement_produit', lambda x: HEAT_PUMP in x.values),
+            has_stove=('famille_equipement_produit', lambda x: STOVE in x.values),
+            region=('nom_region', 'first'),
+            quotes=('numero_compte', lambda g: g)  # ← fixed
+        )
+        .reset_index()
+        .rename(columns={'numero_compte': 'customer_id'})
+    )
+
+    eligible = agg[
+        agg['has_heat_pump'] &
+        ~agg['has_stove'] &
+        agg['region'].isin(COLD_REGIONS)
+        ].copy()
+
+    eligible = eligible[['customer_id', 'region', 'quote_count', 'quotes']]
+    eligible['region'] = eligible['region'].fillna('Unknown')
+
+    print(f"✅ Found {len(eligible)} eligible heat pump owners in cold regions")
+
+    if len(eligible) == 0:
+        print("⚠️ No eligible customers found!")
+
+    return eligible
 
 
 def get_mid_range_quote_customers(df_eligible):
