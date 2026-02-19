@@ -64,7 +64,7 @@ class PriceMatchWidget:
 
                 # Left bar - current price
                 fig.add_trace(
-                    go.Bar(x=[f"{product[:8]}"], y=[base_val], marker_color=c_base,
+                    go.Bar(x=[f"{product[:10]}"], y=[base_val], marker_color=c_base,
                            text=f"{base_val:.3f}", textposition='auto',
                            hovertemplate=f"Prix actuel<br>€{price:.0f}<br>{base_val:.3f}<extra></extra>"),
                     row=1, col=i + 1
@@ -127,18 +127,18 @@ class PriceMatchWidget:
         update()  # initial plot
         display(ui)
 
-        table = wandb.Table(columns=["Scenario", "Plot"])
-
-        for scen in self.OPTIONS:
-            fam = self.OPTIONS[scen]["fam"]
-            data = self.compute_func(family=fam)
-            fig = make_fig(data, scen)
-            fig.show()
-            html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-
-            table.add_data(scen, wandb.Html(html))
-
-        wandb.log({"follow_up_comparison": table})
+        # table = wandb.Table(columns=["Scenario", "Plot"])
+        #
+        # for scen in self.OPTIONS:
+        #     fam = self.OPTIONS[scen]["fam"]
+        #     data = self.compute_func(family=fam)
+        #     fig = make_fig(data, scen)
+        #     fig.show()
+        #     html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+        #
+        #     table.add_data(scen, wandb.Html(html))
+        #
+        # wandb.log({"follow_up_comparison": table})
 
 
 def show_price_match_widget(compute_func, selected_ids):

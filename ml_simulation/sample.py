@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-def sample_diverse_multi_quote(df_candidates, n=5, random_state=42):
+def sample_diverse_products_multi_quote__top_quotes(df_candidates, n=5, random_state=42):
     return (
         df_candidates.assign(
             rank_per_product=lambda d: d.groupby('product')['quote_count'].rank(method='first', ascending=False)
@@ -18,6 +18,29 @@ def sample_diverse_multi_quote(df_candidates, n=5, random_state=42):
         .sort_values('quote_count', ascending=False)
         .reset_index(drop=True)
     )
+
+
+def sample_diverse_products_multi_quote(
+    df_candidates, n=5, random_state=None
+):
+    """Maximize product variety while avoiding repeat customers; random fill-up."""
+    if len(df_candidates) >= n:
+        # Try to get diverse products
+        df_diverse = df_candidates.sort_values('customer_id') \
+            .drop_duplicates(subset='product', keep='first')
+
+        if len(df_diverse) >= n:
+            sample = df_diverse.sample(n=n, random_state=random_state)
+        else:
+            # Mix of diverse + random
+            remaining = df_candidates[~df_candidates['customer_id'].isin(df_diverse['customer_id'])]
+            needed = n - len(df_diverse)
+            extra = remaining.sample(n=needed, random_state=random_state)
+            sample = pd.concat([df_diverse, extra])
+    else:
+        # Not enough candidates, take what we have + pad? (should not happen with fallback)
+        sample = df_candidates
+    return sample.reset_index(drop=True)
 
 
 def sample_for_single_quote_customers(df, n=5, random_state=None):

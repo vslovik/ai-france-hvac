@@ -7,16 +7,41 @@ from ml_simulation__cross_sell.data import CrossSellSimulation
 
 
 class CrossSellWidget:
+    OPTIONS = {
+        "Situation actuelle": {
+            "family": None,
+            "emoji": "📊",
+            "color": "#6baed6",
+            "title": "Situation actuelle – sans cross-sell"
+        },
+        "Poêle": {
+            "family": "Poêle",
+            "emoji": "🔥",
+            "color": "#2ca02c",
+            "title": "Heat Pump → Poêle (recommandé)"
+        },
+        "Climatisation": {
+            "family": "Climatisation",
+            "emoji": "❄️",
+            "color": "#ff7f0e",
+            "title": "Heat Pump → Climatisation"
+        },
+        "ECS": {
+            "family": "ECS : Chauffe-eau ou adoucisseur",
+            "emoji": "💧",
+            "color": "#1f77b4",
+            "title": "Heat Pump → ECS"
+        },
+    }
 
-    def __init__(self, compute_func, selected_ids, options=None):
+    def __init__(self, compute_func, selected_ids):
         self.compute_func = compute_func
         self.selected_ids = selected_ids
-        self.options = options or CrossSellSimulation.OPTIONS
 
     def show(self):
         # ─── Figure factory ───
         def make_figure(data, selected_key):
-            info = self.options[selected_key]
+            info = self.OPTIONS[selected_key]
             is_current = (selected_key == "Situation actuelle")
 
             fig = make_subplots(
@@ -32,8 +57,8 @@ class CrossSellWidget:
             color_down = '#d62728'
 
             for i in range(len(self.selected_ids)):
-                b = data['baselines'][i]
-                n = data['new_probs'][i]
+                b = data['base'][i]
+                n = data['new'][i]
                 delta = n - b
 
                 # Left bar – current situation
@@ -82,7 +107,7 @@ class CrossSellWidget:
 
             fig.update_yaxes(
                 title_text="Probabilité de conversion",
-                range=[0, max(0.85, max(data['new_probs']) * 1.12)]
+                range=[0, max(0.85, max(data['new']) * 1.12)]
             )
             fig.update_xaxes(title_text="")
 
@@ -90,7 +115,7 @@ class CrossSellWidget:
 
         # ─── Widgets ───
         dropdown = widgets.Dropdown(
-            options=list(self.options.keys()),
+            options=list(self.OPTIONS.keys()),
             value="Situation actuelle",
             description='Scénario :',
             layout=widgets.Layout(width='420px')
@@ -102,8 +127,8 @@ class CrossSellWidget:
             with output:
                 output.clear_output(wait=True)
                 opt_key = dropdown.value
-                family = self.options[opt_key]["family"]
-                data = self.compute_func(product_family=family)
+                family = self.OPTIONS[opt_key]["family"]
+                data = self.compute_func(family=family)
                 fig = make_figure(data, opt_key)
                 display(fig)
 
@@ -119,6 +144,6 @@ class CrossSellWidget:
         ]))
 
 
-def show_cross_sell_widget(compute_func, selected_ids, options=None):
-    widget = CrossSellWidget(compute_func, selected_ids, options)
+def show_cross_sell_widget(compute_func, selected_ids):
+    widget = CrossSellWidget(compute_func, selected_ids)
     widget.show()

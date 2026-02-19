@@ -8,7 +8,7 @@ class DiscountSampler:
         self.df_sim = df_sim
         self.random_state = random_state
 
-    def sample(self):
+    def get_eligible_segment(self):
         df_not_converted = get_nonconverted_customers(self.df_sim)
 
         # 4. Add discount information
@@ -35,8 +35,12 @@ class DiscountSampler:
         df_candidates = pd.DataFrame(discount_data)
 
         print(f"Candidates with price data: {len(df_candidates)}")
+        return df_candidates
 
-        # 5. Define sampling strategy
+    def sample(self):
+        df_candidates = self.get_eligible_segment()
+
+        # Define sampling strategy
         print("\n📊 SAMPLING STRATEGY:")
         print("   1. No existing discount (test introduction)")
         print("   2. Small existing discount (< 2%)")
