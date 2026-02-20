@@ -8,7 +8,7 @@ from IPython.display import display
 class SalesRepWidget:
     # Color mapping based on segment
     SEGMENT_COLORS = {
-        'discount_sensitive': {
+        'price_sensitive': {
             'light': '#fdae61',  # Light orange
             'dark': '#ff7f0e',  # Dark orange
             'name': '💰',
@@ -160,7 +160,7 @@ class SalesRepWidget:
                 output.clear_output(wait=True)
                 key = dropdown.value
                 rep = self.REP_OPTIONS[key]['rep']
-                data = self.compute_func(rep_type=rep)
+                data = self.compute_func(family=rep)
                 fig = make_figure(data, key)
                 display(fig)
 

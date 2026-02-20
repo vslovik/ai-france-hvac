@@ -1,8 +1,62 @@
 import numpy as np
 import pandas as pd
 
-from ml_simulation.constrants import HEAT_PUMP, STOVE, COLD_REGIONS
+from ml_simulation.constrants import HEAT_PUMP, STOVE, COLD_REGIONS, HIGH_PRICE
 from ml_simulation.util import get_product_price_tiers
+
+
+import pandas as pd
+import numpy as np
+
+
+def assign_price_value_profile(df):
+    """
+    Adds derived flags, computes a score, and assigns 'price_value_profile'
+    based on price vs value sensitivity.
+
+    Expected input columns (customer-level aggregated data):
+    - quote_count
+    - total_price
+    - region
+    - has_heat_pump           (boolean)
+    - has_discount            (boolean)
+    - current_rep             (optional string)
+
+    Adds / modifies:
+    - is_shopping_around
+    - is_premium
+    - is_cold_region_heatpump
+    - score
+    - price_value_profile     ('price_sensitive', 'neutral', 'value_sensitive')
+
+    Returns the modified DataFrame.
+    """
+    # Fill missing values and add boolean flags in one step
+    df = df.assign(
+        is_shopping_around     = lambda d: d['quote_count'] >= 2,
+        is_premium             = lambda d: d['total_price'] > HIGH_PRICE,
+        is_cold_region_heatpump = lambda d: d['region'].isin(COLD_REGIONS) & d['has_heat_pump'],
+        current_rep            = lambda d: d['current_rep'].fillna('Unknown') if 'current_rep' in d.columns else 'Unknown',
+        region                 = lambda d: d['region'].fillna('Unknown') if 'region' in d.columns else 'Unknown',
+    )
+
+    # Compute composite score
+    df['score'] = (
+        df['is_premium'].astype(int)
+        + df['is_cold_region_heatpump'].astype(int)
+        - df['has_discount'].astype(int)
+        - df['is_shopping_around'].astype(int)
+    )
+
+    # Assign final profile using pd.cut
+    df['price_value_profile'] = pd.cut(
+        df['score'],
+        bins=[-np.inf, -1, 1, np.inf],
+        labels=['price_sensitive', 'neutral', 'value_sensitive'],
+        include_lowest=True
+    ).astype(str)
+
+    return df
 
 
 def get_nonconverted_customers(df_simulation):
