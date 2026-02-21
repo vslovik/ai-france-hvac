@@ -5,10 +5,6 @@ from ml_simulation.constrants import HEAT_PUMP, STOVE, COLD_REGIONS, HIGH_PRICE
 from ml_simulation.util import get_product_price_tiers
 
 
-import pandas as pd
-import numpy as np
-
-
 def assign_price_value_profile(df):
     """
     Adds derived flags, computes a score, and assigns 'price_value_profile'

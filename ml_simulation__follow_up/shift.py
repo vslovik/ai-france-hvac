@@ -1,17 +1,16 @@
 import numpy as np
 import pandas as pd
 
-from ml_inference.inference import safe_predict
 from ml_simulation.data import Simulation
+from ml_simulation.shift import ConversionShiftSimulator
 
 
-class FollowUpSimulation(Simulation):
+class FollowUpConversionShiftSimulator(ConversionShiftSimulator):
+    def __init__(self, df_quotes, model, new_product='Poêle'):
+        super().__init__(df_quotes, model)
+        self.new_product = new_product
 
-    def __init__(self, pred_model, feature_names, safe_predict, df_simulation, sampled_ids):
-        super().__init__(pred_model, feature_names, safe_predict, df_simulation, sampled_ids)
-
-    @staticmethod
-    def apply_change(df_simulation, cid, family):
+    def apply_change(self) -> pd.DataFrame:
         """
         For each customer (numero_compte) with EXACTLY ONE quote:
         - Creates one additional (alternative) quote with famille_equipement_produit = new_product
@@ -27,16 +26,15 @@ class FollowUpSimulation(Simulation):
         - PRODUCT_TIERS global dictionary (already defined in your code)
         - Key columns: numero_compte, id_devis, mt_apres_remise_ht_devis, dt_creation_devis
         """
-        df_quotes = df_simulation[df_simulation['numero_compte'] == cid].copy()
-        if df_quotes.empty:
-            return df_quotes.copy()
+        if self.df_quotes.empty:
+            return self.df_quotes.copy()
 
         required = ['numero_compte', 'id_devis', 'mt_apres_remise_ht_devis', 'dt_creation_devis']
-        missing = [col for col in required if col not in df_quotes.columns]
+        missing = [col for col in required if col not in self.df_quotes.columns]
         if missing:
             raise ValueError(f"Missing required columns: {', '.join(missing)}")
 
-        df = df_quotes.copy()
+        df = self.df_quotes.copy()
         df['dt_creation_devis'] = pd.to_datetime(df['dt_creation_devis'], errors='coerce')
 
         # ── Find customers with exactly one quote ───────────────────────────────
@@ -52,11 +50,11 @@ class FollowUpSimulation(Simulation):
 
         # ── Create alternative quotes ───────────────────────────────────────────
         alternatives = originals.copy()
-        alternatives['famille_equipement_produit'] = family
+        alternatives['famille_equipement_produit'] = self.new_product
 
         # Use p30 from PRODUCT_TIERS (preferred business reference price)
-        if family in Simulation.PRODUCT_TIERS and 'p30' in Simulation.PRODUCT_TIERS[family]:
-            alternatives['mt_apres_remise_ht_devis'] = Simulation.PRODUCT_TIERS[family]['p30']
+        if self.new_product in Simulation.PRODUCT_TIERS and 'p30' in Simulation.PRODUCT_TIERS[self.new_product]:
+            alternatives['mt_apres_remise_ht_devis'] = Simulation.PRODUCT_TIERS[self.new_product]['p30']
         else:
             # Fallback consistent with earlier budget logic
             alternatives['mt_apres_remise_ht_devis'] = originals['mt_apres_remise_ht_devis'] * 0.70
@@ -82,7 +80,7 @@ class FollowUpSimulation(Simulation):
         # Descriptive update (helps readability in reports / UI)
         if 'nom_devis' in alternatives.columns:
             alternatives['nom_devis'] = (
-                    alternatives['nom_devis'].astype(str) + f' – Alternative {family}'
+                    alternatives['nom_devis'].astype(str) + f' – Alternative {self.new_product}'
             ).str.strip(' –')
 
         if 'type_devis' in alternatives.columns:
@@ -113,32 +111,7 @@ class FollowUpSimulation(Simulation):
 
         return df_updated
 
-    def get_compute_function(self):
-        data = self.get_data()
 
-        def compute_func(family=None):
-            new_list = []
-            for i, cid in enumerate(self.sampled_ids):
-                if family is None:
-                    val = data["base"][i]
-                else:
-                    df_quotes_mod = self.apply_change(self.df_simulation, cid, family)
-                    val = safe_predict(cid, df_quotes_mod, self.pred_model, self.feature_names)
-                new_list.append(val)
-            new_array = np.array(new_list)
-            return {
-                'base': data["base"],
-                'new': new_array,
-                'regions': data["regions"],
-                'products': data["products"],
-                'prices': data["prices"],
-                'tiers': data["tiers"],
-                'delta_avg': np.mean(new_array - data["base"]) if family is not None else 0.0,
-            }
-
-        return compute_func
-
-
-def get_follow_up_compute_function(pred_model, feature_names, df_simulation, sampled_ids):
-    simulation = FollowUpSimulation(pred_model, feature_names, safe_predict, df_simulation, sampled_ids)
-    return simulation.get_compute_function()
+def simulate_follow_up_conversion_shift(df_quotes, model, new_product='Poêle'):
+    simulator = FollowUpConversionShiftSimulator(df_quotes, model, new_product)
+    return simulator.run()
