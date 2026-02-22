@@ -1,5 +1,5 @@
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import wandb
 import pandas as pd
 
 from ml_simulation__discount.shift import simulate_discount_conversion_shift
@@ -8,10 +8,11 @@ from ml_simulation__discount.shift import simulate_discount_conversion_shift
 class Graph:
     DISCOUNT_LEVELS = [0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 7.5, 10.0, 15.0]
 
-    def __init__(self, df_sim, model, selected_ids):
+    def __init__(self, df_sim, model, selected_ids, log_to_wandb=False):
         self.df_sim = df_sim
         self.model = model
         self.selected_ids = selected_ids
+        self.log_to_wandb = log_to_wandb
 
     def get_data(self):
         # Calculate base price per customer for discount amounts
@@ -110,11 +111,14 @@ class Graph:
 
         fig.show()
 
+        if self.log_to_wandb:
+            wandb.log({"discount_comparison_graph": fig})
+
         print("✓ Comparative discount response curves created!")
         print("✓ Hover over any point to see customer-specific details")
         print("✓ Each line shows a different customer's sensitivity to discounts")
 
 
-def show_discount_comparison_graph(df_sim, model, selected_ids):
-    graph = Graph(df_sim, model, selected_ids)
+def show_discount_comparison_graph(df_sim, model, selected_ids, log_to_wandb=False):
+    graph = Graph(df_sim, model, selected_ids, log_to_wandb)
     graph.show()
