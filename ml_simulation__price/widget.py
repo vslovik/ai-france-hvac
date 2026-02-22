@@ -1,44 +1,42 @@
 import plotly.graph_objects as go
-import wandb
 from plotly.subplots import make_subplots
 import ipywidgets as widgets
-from IPython.display import display
+
+from ml_simulation.widget import Widget
 
 
-class PriceMatchWidget:
+class PriceMatchWidget(Widget):
     OPTIONS = {
         "Prix actuel": {
-            "fam": None,
+            "scenario": None,
             "emoji": "📊",
             "color": "#6baed6",
             "title": "Prix actuel (sans réduction)"
         },
         "-10%": {
-            "fam": -0.10,
+            "scenario": -0.10,
             "emoji": "🔰",
             "color": "#fdae61",
             "title": "Réduction -10%"
         },
         "-15%": {
-            "fam": -0.15,
+            "scenario": -0.15,
             "emoji": "💰",
             "color": "#2ca02c",
             "title": "Réduction -15%"
         },
         "-20%": {
-            "fam": -0.20,
+            "scenario": -0.20,
             "emoji": "🏷️",
             "color": "#d62728",
             "title": "Réduction -20%"
         },
     }
 
-    def __init__(self, compute_func, selected_ids):
-        self.compute_func = compute_func
-        self.selected_ids = selected_ids
+    def __init__(self, compute_func, selected_ids, log_to_wandb=False):
+        super().__init__(compute_func, selected_ids, log_to_wandb)
 
-    def show(self):
-        # ─── Figure factory ───
+    def get_make_fig(self):
         def make_fig(data, key):
             info = self.OPTIONS[key]
             is_current = key == "Prix actuel"
@@ -71,7 +69,7 @@ class PriceMatchWidget:
                 )
 
                 # Right bar - reduced price
-                new_price = price * (1 + info['fam']) if info['fam'] else price
+                new_price = price * (1 + info['scenario']) if info['scenario'] else price
                 hover_text = f"{key}<br>€{new_price:.0f}<br>{new_val:.3f}" + ("" if is_current else f" ({delta:+.3f})")
 
                 fig.add_trace(
@@ -96,51 +94,17 @@ class PriceMatchWidget:
             )
             fig.update_yaxes(title_text="Probabilité de conversion", range=[0, 0.9])
             return fig
+        return make_fig
 
-        # ─── Widgets ───
-        dropdown = widgets.Dropdown(
+    def get_dropdown(self):
+        return widgets.Dropdown(
             options=list(self.OPTIONS.keys()),
             value="Prix actuel",
             description='Réduction :',
             layout={'width': '380px'}
         )
 
-        output = widgets.Output()
 
-        def update(change=None):
-            with output:
-                output.clear_output(wait=True)
-                key = dropdown.value
-                fam = self.OPTIONS[key]['fam']
-                data = self.compute_func(family=fam)
-                fig = make_fig(data, key)
-                display(fig)
-
-        dropdown.observe(update, names='value')
-
-        # Show UI
-        ui = widgets.VBox([
-            widgets.HBox([dropdown]),
-            output
-        ])
-
-        update()  # initial plot
-        display(ui)
-
-        # table = wandb.Table(columns=["Scenario", "Plot"])
-        #
-        # for scen in self.OPTIONS:
-        #     fam = self.OPTIONS[scen]["fam"]
-        #     data = self.compute_func(family=fam)
-        #     fig = make_fig(data, scen)
-        #     fig.show()
-        #     html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-        #
-        #     table.add_data(scen, wandb.Html(html))
-        #
-        # wandb.log({"follow_up_comparison": table})
-
-
-def show_price_match_widget(compute_func, selected_ids):
-    widget = PriceMatchWidget(compute_func, selected_ids)
+def show_price_match_widget(compute_func, selected_ids, log_to_wandb=False):
+    widget = PriceMatchWidget(compute_func, selected_ids, log_to_wandb)
     widget.show()

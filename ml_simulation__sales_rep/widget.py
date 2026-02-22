@@ -2,10 +2,10 @@ import plotly.graph_objects as go
 import wandb
 from plotly.subplots import make_subplots
 import ipywidgets as widgets
-from IPython.display import display
+from ml_simulation.widget import Widget
 
 
-class SalesRepWidget:
+class SalesRepWidget(Widget):
     # Color mapping based on segment
     SEGMENT_COLORS = {
         'price_sensitive': {
@@ -28,30 +28,30 @@ class SalesRepWidget:
         }
     }
 
-    REP_OPTIONS = {
+    OPTIONS = {
         "Commercial actuel": {
-            "rep": None,
+            "scenario": None,
             "emoji": "📊",
             "color_emoji": "⬜",  # White circle for current
             "display": "⬜ 📊 Commercial actuel",
             "title": "Commercial actuel"
         },
         "MARINA GUYOT": {
-            "rep": "marina",
+            "scenario": "marina",
             "emoji": "💰",
             "color_emoji": "🟠",  # Orange circle matches discount-sensitive
             "display": "🟠 💰 MARINA GUYOT (Discount-focused)",
             "title": "MARINA GUYOT (Discount-focused)"
         },
         "ELISABETH MACHADO": {
-            "rep": "elisabeth",
+            "scenario": "elisabeth",
             "emoji": "🌟",
             "color_emoji": "🟢",  # Green circle matches value-sensitive
             "display": "🟢 🌟 ELISABETH MACHADO (Value-focused)",
             "title": "ELISABETH MACHADO (Value-focused)"
         },
         "Clément TOUZAN": {
-            "rep": "clement",
+            "scenario": "clement",
             "emoji": "🔵",
             "color_emoji": "🔵",  # Blue circle matches neutral
             "display": "🔵 🔹 Clément TOUZAN (Neutral)",
@@ -59,13 +59,12 @@ class SalesRepWidget:
         },
     }
 
-    def __init__(self, compute_func, selected_ids):
-        self.compute_func = compute_func
-        self.selected_ids = selected_ids
+    def __init__(self, compute_func, selected_ids, log_to_wandb=False):
+        super().__init__(compute_func, selected_ids, log_to_wandb)
 
-    def show(self):
+    def get_make_fig(self):
         def make_figure(data, selected_key):
-            info = self.REP_OPTIONS[selected_key]
+            info = self.OPTIONS[selected_key]
             is_current = (selected_key == "Commercial actuel")
 
             fig = make_subplots(
@@ -144,38 +143,17 @@ class SalesRepWidget:
             fig.update_xaxes(title_text="")
 
             return fig
+        return make_figure
 
-        # Widgets - Use display field with color emoji
-        dropdown = widgets.Dropdown(
-            options=[(info['display'], key) for key, info in self.REP_OPTIONS.items()],
+    def get_dropdown(self):
+        return widgets.Dropdown(
+            options=[(info['display'], key) for key, info in self.OPTIONS.items()],
             value="Commercial actuel",
             description='Commercial :',
             layout={'width': '500px'}  # Wider for colored emoji
         )
 
-        output = widgets.Output()
 
-        def update(change=None):
-            with output:
-                output.clear_output(wait=True)
-                key = dropdown.value
-                rep = self.REP_OPTIONS[key]['rep']
-                data = self.compute_func(family=rep)
-                fig = make_figure(data, key)
-                display(fig)
-
-        dropdown.observe(update, names='value')
-
-        # Initial plot
-        update()
-
-        # Layout
-        display(widgets.VBox([
-            widgets.HBox([dropdown]),
-            output
-        ]))
-
-
-def show_sales_rep_widget(compute_func, selected_ids):
-    widget = SalesRepWidget(compute_func, selected_ids)
+def show_sales_rep_widget(compute_func, selected_ids, log_to_wandb=False):
+    widget = SalesRepWidget(compute_func, selected_ids, log_to_wandb)
     widget.show()

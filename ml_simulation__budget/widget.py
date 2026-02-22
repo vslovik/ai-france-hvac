@@ -1,10 +1,10 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ipywidgets as widgets
-from IPython.display import display
+from ml_simulation.widget import Widget
 
 
-class BudgetAlternativeWidget:
+class BudgetAlternativeWidget(Widget):
     OPTIONS = {
         "Prix actuel": {
             "scenario": None,
@@ -20,12 +20,10 @@ class BudgetAlternativeWidget:
         }
     }
 
-    def __init__(self, compute_func, selected_ids):
-        self.compute_func = compute_func
-        self.selected_ids = selected_ids
+    def __init__(self, compute_func, selected_ids, log_to_wandb=False):
+        super().__init__(compute_func, selected_ids, log_to_wandb)
 
-    def show(self):
-        # ─── Figure factory ───
+    def get_make_fig(self):
         def make_fig(data, key):
             info = self.OPTIONS[key]
             is_current = key == "Prix actuel"
@@ -87,38 +85,17 @@ class BudgetAlternativeWidget:
             )
             fig.update_yaxes(title_text="Probabilité de conversion", range=[0, 0.9])
             return fig
+        return make_fig
 
-        # ─── Widgets ───
-        dropdown = widgets.Dropdown(
+    def get_dropdown(self):
+        return widgets.Dropdown(
             options=list(self.OPTIONS.keys()),
             value="Prix actuel",
             description='Scénario :',
             layout={'width': '380px'}
         )
 
-        output = widgets.Output()
 
-        def update(change=None):
-            with output:
-                output.clear_output(wait=True)
-                key = dropdown.value
-                scenario = self.OPTIONS[key]['scenario']
-                data = self.compute_func(family=scenario)
-                fig = make_fig(data, key)
-                display(fig)
-
-        dropdown.observe(update, names='value')
-
-        # Show UI
-        ui = widgets.VBox([
-            widgets.HBox([dropdown]),
-            output
-        ])
-
-        update()  # initial plot
-        display(ui)
-
-
-def show_budget_alternative_widget(compute_func, selected_ids):
-    widget = BudgetAlternativeWidget(compute_func, selected_ids)
+def show_budget_alternative_widget(compute_func, selected_ids, log_to_wandb=False):
+    widget = BudgetAlternativeWidget(compute_func, selected_ids, log_to_wandb)
     widget.show()

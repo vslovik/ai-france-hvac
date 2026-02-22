@@ -1,50 +1,47 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ipywidgets as widgets
-from IPython.display import display
+from ml_simulation.widget import Widget
 
 
-class DiscountWidget:
+class DiscountWidget(Widget):
     OPTIONS = {
         "Prix actuel": {
-            "discount": None,
+            "scenario": None,
             "emoji": "📊",
             "color": "#6baed6",
             "title": "Sans remise"
         },
         "1.0%": {
-            "discount": 1.0,
+            "scenario": 1.0,
             "emoji": "🔰",
             "color": "#fdae61",
             "title": "Remise 1.0%"
         },
         "1.5%": {
-            "discount": 1.5,
+            "scenario": 1.5,
             "emoji": "💰",
             "color": "#2ca02c",
             "title": "Remise 1.5%"
         },
         "2.0%": {
-            "discount": 2.0,
+            "scenario": 2.0,
             "emoji": "🏷️",
             "color": "#d62728",
             "title": "Remise 2.0%"
         },
         "2.5%": {
-            "discount": 2.5,
+            "scenario": 2.5,
             "emoji": "🔥",
             "color": "#ff7f0e",
             "title": "Remise 2.5%"
         },
     }
 
-    def __init__(self, compute_func, selected_ids):
-        self.compute_func = compute_func
-        self.selected_ids = selected_ids
+    def __init__(self, compute_func, selected_ids, log_to_wandb=False):
+        super().__init__(compute_func, selected_ids, log_to_wandb)
 
-    def show(self):
-
-        # ─── Figure factory ───
+    def get_make_fig(self):
         def make_fig(data, key):
             info = self.OPTIONS[key]
             is_current = key == "Prix actuel"
@@ -83,7 +80,7 @@ class DiscountWidget:
                     new_price = price
                 else:
                     new_discount = data['discounts'][i]
-                    new_price = price * (1 - info['discount'] / 100)
+                    new_price = price * (1 - info['scenario'] / 100)
 
                 hover_text = f"{key}<br>€{new_price:.0f}<br>Remise: €{new_discount:.0f}<br>{new_val:.3f}" + (
                     "" if is_current else f" ({delta:+.3f})")
@@ -110,38 +107,17 @@ class DiscountWidget:
             )
             fig.update_yaxes(title_text="Probabilité de conversion", range=[0, 0.9])
             return fig
+        return make_fig
 
-        # ─── Widgets ───
-        dropdown = widgets.Dropdown(
+    def get_dropdown(self):
+        return widgets.Dropdown(
             options=list(self.OPTIONS.keys()),
             value="Prix actuel",
             description='Remise :',
             layout={'width': '380px'}
         )
 
-        output = widgets.Output()
 
-        def update(change=None):
-            with output:
-                output.clear_output(wait=True)
-                key = dropdown.value
-                discount = self.OPTIONS[key]['discount']
-                data = self.compute_func(family=discount)
-                fig = make_fig(data, key)
-                display(fig)
-
-        dropdown.observe(update, names='value')
-
-        # Show UI
-        ui = widgets.VBox([
-            widgets.HBox([dropdown]),
-            output
-        ])
-
-        update()  # initial plot
-        display(ui)
-
-
-def show_discount_widget(compute_func, selected_ids):
-    widget = DiscountWidget(compute_func, selected_ids)
+def show_discount_widget(compute_func, selected_ids, log_to_wandb=False):
+    widget = DiscountWidget(compute_func, selected_ids, log_to_wandb)
     widget.show()

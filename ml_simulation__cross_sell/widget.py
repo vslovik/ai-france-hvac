@@ -1,45 +1,41 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ipywidgets as widgets
-from IPython.display import display
-
-from ml_simulation__cross_sell.data import CrossSellSimulation
+from ml_simulation.widget import Widget
 
 
-class CrossSellWidget:
+class CrossSellWidget(Widget):
     OPTIONS = {
         "Situation actuelle": {
-            "family": None,
+            "scenario": None,
             "emoji": "📊",
             "color": "#6baed6",
             "title": "Situation actuelle – sans cross-sell"
         },
         "Poêle": {
-            "family": "Poêle",
+            "scenario": "Poêle",
             "emoji": "🔥",
             "color": "#2ca02c",
             "title": "Heat Pump → Poêle (recommandé)"
         },
         "Climatisation": {
-            "family": "Climatisation",
+            "scenario": "Climatisation",
             "emoji": "❄️",
             "color": "#ff7f0e",
             "title": "Heat Pump → Climatisation"
         },
         "ECS": {
-            "family": "ECS : Chauffe-eau ou adoucisseur",
+            "scenario": "ECS : Chauffe-eau ou adoucisseur",
             "emoji": "💧",
             "color": "#1f77b4",
             "title": "Heat Pump → ECS"
         },
     }
 
-    def __init__(self, compute_func, selected_ids):
-        self.compute_func = compute_func
-        self.selected_ids = selected_ids
+    def __init__(self, compute_func, selected_ids, log_to_wandb=False):
+        super().__init__(compute_func, selected_ids, log_to_wandb)
 
-    def show(self):
-        # ─── Figure factory ───
+    def get_make_fig(self):
         def make_figure(data, selected_key):
             info = self.OPTIONS[selected_key]
             is_current = (selected_key == "Situation actuelle")
@@ -112,38 +108,17 @@ class CrossSellWidget:
             fig.update_xaxes(title_text="")
 
             return fig
+        return make_figure
 
-        # ─── Widgets ───
-        dropdown = widgets.Dropdown(
+    def get_dropdown(self):
+        return widgets.Dropdown(
             options=list(self.OPTIONS.keys()),
             value="Situation actuelle",
             description='Scénario :',
             layout=widgets.Layout(width='420px')
         )
 
-        output = widgets.Output()
 
-        def update(change=None):
-            with output:
-                output.clear_output(wait=True)
-                opt_key = dropdown.value
-                family = self.OPTIONS[opt_key]["family"]
-                data = self.compute_func(family=family)
-                fig = make_figure(data, opt_key)
-                display(fig)
-
-        dropdown.observe(update, names='value')
-
-        # Initial plot
-        update()
-
-        # Layout
-        display(widgets.VBox([
-            widgets.HBox([dropdown]),
-            output
-        ]))
-
-
-def show_cross_sell_widget(compute_func, selected_ids):
-    widget = CrossSellWidget(compute_func, selected_ids)
+def show_cross_sell_widget(compute_func, selected_ids, log_to_wandb=False):
+    widget = CrossSellWidget(compute_func, selected_ids, log_to_wandb)
     widget.show()
