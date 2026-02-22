@@ -3,20 +3,24 @@ import numpy as np
 import plotly.graph_objects as go
 from contextlib import redirect_stdout
 import io
+
+import wandb
+
 from ml_features.features import create_features
 
 
 class ConversionShiftSimulator:
-    def __init__(self, df_quotes, model, show_plot):
+    def __init__(self, df_quotes, model, show_plot, log_to_wandb=False):
         self.df_quotes = df_quotes
         self.model = model
         self.show_plot = show_plot
+        self.log_to_wandb = log_to_wandb
 
     def apply_change(self):
         return self.df_quotes.copy()  # default: no change
 
-    @staticmethod
     def show_diagram(
+            self,
             comparison_df: pd.DataFrame,
             bins: int = 10,
             title: str = "Shift des probabilités de conversion après transformation"
@@ -178,6 +182,11 @@ class ConversionShiftSimulator:
         )
 
         fig.show()
+
+        if self.log_to_wandb:
+            wandb.log({
+                "Conversion Shift Diagram": fig
+            })
         return fig
 
     def get_comparison_df(self):

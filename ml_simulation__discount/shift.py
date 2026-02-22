@@ -4,8 +4,8 @@ from ml_simulation.shift import ConversionShiftSimulator
 
 
 class DiscountConversionShiftSimulator(ConversionShiftSimulator):
-    def __init__(self, df_quotes, model, discount_percentage, show_plot=True):
-        super().__init__(df_quotes, model, show_plot)
+    def __init__(self, df_quotes, model, discount_percentage, show_plot=True, log_to_wandb=False):
+        super().__init__(df_quotes, model, show_plot, log_to_wandb)
         self.discount_percentage = discount_percentage
 
     def apply_change(self) -> pd.DataFrame:
@@ -92,8 +92,8 @@ class DiscountConversionShiftSimulator(ConversionShiftSimulator):
         return df_sorted.set_index(df.index).sort_index()
 
 
-def simulate_discount_conversion_shift(df_quotes, model, discount_percentage, show_plot=True):
-    simulator = DiscountConversionShiftSimulator(df_quotes, model, discount_percentage, show_plot)
+def simulate_discount_conversion_shift(df_quotes, model, discount_percentage, show_plot=True, log_to_wandb=False):
+    simulator = DiscountConversionShiftSimulator(df_quotes, model, discount_percentage, show_plot, log_to_wandb)
     return simulator.run()
 
 

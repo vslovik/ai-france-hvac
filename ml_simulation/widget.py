@@ -58,7 +58,7 @@ class Widget:
                 fig.show()
                 html = fig.to_html(full_html=False, include_plotlyjs='cdn')
                 table.add_data(scen, wandb.Html(html))
-            wandb.log({"follow_up_comparison": table})
+            wandb.log({"Scenario choices comparison": table})
         else:
             for i, scen in enumerate(self.OPTIONS):
                 if i == 0:
