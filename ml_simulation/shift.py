@@ -7,9 +7,10 @@ from ml_features.features import create_features
 
 
 class ConversionShiftSimulator:
-    def __init__(self, df_quotes, model):
+    def __init__(self, df_quotes, model, show_plot):
         self.df_quotes = df_quotes
         self.model = model
+        self.show_plot = show_plot
 
     def apply_change(self):
         return self.df_quotes.copy()  # default: no change
@@ -179,124 +180,38 @@ class ConversionShiftSimulator:
         fig.show()
         return fig
 
-    def run_(self):
-        """ Implements the pipeline: 1. Create base features 2. Get base predictions 3. Apply transformation to quotes 4. Create transformed features 5. Get new predictions 6. Create comparison DataFrame 7. Plot bar diagram """
+    def get_comparison_df(self):
         # Step 1: Base features
         with redirect_stdout(io.StringIO()):
             df_base = create_features(self.df_quotes)
-            # Step 2: Base predictions
+
+        # Step 2: Base predictions
         X_base = df_base.drop(columns=['numero_compte', 'converted'], errors='ignore')
-        df_base['base_prediction'] = self.model.predict_proba(X_base)[:, 1]  # FIX: use predict_proba
+        df_base['base_prediction'] = self.model.predict_proba(X_base)[:, 1]
+
         # Step 3: Transformed quotes
         df_quotes_tr = self.apply_change()
-        # Step 4: Transformed features
+
+        # Step 4: Features on transformed quotes
         with redirect_stdout(io.StringIO()):
             df_tr = create_features(df_quotes_tr)
-            # Step 5: New predictions
+
+        # Step 5: New predictions
         X_tr = df_tr.drop(columns=['numero_compte', 'converted'], errors='ignore')
-        df_tr['new_prediction'] = self.model.predict_proba(X_tr)[:, 1]  # FIX: use predict_proba
+        df_tr['new_prediction'] = self.model.predict_proba(X_tr)[:, 1]
+
         # Step 6: Comparison DataFrame
         comparison_df = pd.merge(
             df_base[['numero_compte', 'base_prediction']],
             df_tr[['numero_compte', 'new_prediction']],
             on='numero_compte', how='inner'
         ).rename(columns={'numero_compte': 'customer_id'})
-        # Step 7: Bar diagram
-        self.show_diagram(comparison_df)
+
         return comparison_df
 
     def run(self):
-        """ Implements the pipeline with debugging """
-        print("\n=== DEBUG: ConversionShiftSimulator.run() ===")
-
-        # Step 1: Base features
-        print("\n1. Creating base features...")
-        with redirect_stdout(io.StringIO()):
-            df_base = create_features(self.df_quotes)
-
-        print(f"   Base features shape: {df_base.shape}")
-        # print(f"   Base features columns: {df_base.columns.tolist()}")
-        print(f"   Number of customers in base: {df_base['numero_compte'].nunique()}")
-
-        # Step 2: Base predictions
-        print("\n2. Getting base predictions...")
-        X_base = df_base.drop(columns=['numero_compte', 'converted'], errors='ignore')
-        df_base['base_prediction'] = self.model.predict_proba(X_base)[:, 1]
-
-        print(f"   Base predictions stats:")
-        print(f"     Min: {df_base['base_prediction'].min():.4f}")
-        print(f"     Max: {df_base['base_prediction'].max():.4f}")
-        print(f"     Mean: {df_base['base_prediction'].mean():.4f}")
-
-        # Step 3: Transformed quotes
-        print("\n3. Applying transformation to quotes...")
-        df_quotes_tr = self.apply_change()
-
-        print(f"\n4. Creating features on transformed quotes...")
-        with redirect_stdout(io.StringIO()):
-            df_tr = create_features(df_quotes_tr)
-
-        print(f"   Transformed features shape: {df_tr.shape}")
-        print(f"   Number of customers in transformed: {df_tr['numero_compte'].nunique()}")
-
-        # Step 5: Compare features
-        print("\n5. Comparing base vs transformed features for same customers...")
-
-        # Merge to compare
-        comparison_features = df_base.merge(
-            df_tr,
-            on='numero_compte',
-            suffixes=('_base', '_tr'),
-            how='inner'
-        )
-
-        print(f"   Customers in both: {len(comparison_features)}")
-
-        # Find numeric columns to compare
-        numeric_cols_base = [c for c in df_base.columns if c not in ['numero_compte', 'converted']
-                             and pd.api.types.is_numeric_dtype(df_base[c])]
-
-        print("\n   Feature changes:")
-        for col in numeric_cols_base[:10]:  # Check first 10 features
-            base_col = col + '_base'
-            tr_col = col + '_tr'
-            if base_col in comparison_features.columns and tr_col in comparison_features.columns:
-                if not comparison_features[base_col].equals(comparison_features[tr_col]):
-                    diff = (comparison_features[tr_col] - comparison_features[base_col]).abs().sum()
-                    if diff > 0:
-                        print(f"     {col}: changed (total abs diff: {diff:.4f})")
-
-        # Step 6: New predictions
-        print("\n6. Getting new predictions...")
-        X_tr = df_tr.drop(columns=['numero_compte', 'converted'], errors='ignore')
-        df_tr['new_prediction'] = self.model.predict_proba(X_tr)[:, 1]
-
-        print(f"   New predictions stats:")
-        print(f"     Min: {df_tr['new_prediction'].min():.4f}")
-        print(f"     Max: {df_tr['new_prediction'].max():.4f}")
-        print(f"     Mean: {df_tr['new_prediction'].mean():.4f}")
-
-        # Step 7: Comparison DataFrame
-        print("\n7. Creating comparison DataFrame...")
-        comparison_df = pd.merge(
-            df_base[['numero_compte', 'base_prediction']],
-            df_tr[['numero_compte', 'new_prediction']],
-            on='numero_compte', how='inner'
-        ).rename(columns={'numero_compte': 'customer_id'})
-
-        print(f"   Comparison shape: {comparison_df.shape}")
-        print(f"   Prediction changes:")
-        print(f"     Mean base: {comparison_df['base_prediction'].mean():.4f}")
-        print(f"     Mean new: {comparison_df['new_prediction'].mean():.4f}")
-        print(f"     Mean lift: {comparison_df['new_prediction'].mean() - comparison_df['base_prediction'].mean():.4f}")
-
-        # Check if any predictions decreased
-        decreased = comparison_df['new_prediction'] < comparison_df['base_prediction']
-        print(
-            f"     Customers with decreased prediction: {decreased.sum()} ({decreased.sum() / len(comparison_df) * 100:.1f}%)")
-
-        print("\n=== END DEBUG ===\n")
-
-        # Step 8: Bar diagram
-        self.show_diagram(comparison_df)
+        """Runs the simulation pipeline"""
+        comparison_df = self.get_comparison_df()
+        if self.show_plot:
+            self.show_diagram(comparison_df)
         return comparison_df

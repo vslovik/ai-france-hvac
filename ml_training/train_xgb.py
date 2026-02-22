@@ -68,12 +68,12 @@ def train_xgb(X, y, model_name, wandb_run=None):
         }).sort_values('importance', ascending=False)
 
         # Log top features
-        wandb_run.summary[f"{model_name}_top_feature"] = feature_importance.iloc[0]['feature']
-        wandb_run.summary[f"{model_name}_top_importance"] = feature_importance.iloc[0]['importance']
-
-        # Log feature importance table
-        importance_table = wandb.Table(dataframe=feature_importance.head(20))
-        wandb_run.log({f"{model_name}/feature_importance": importance_table})
+        # wandb_run.summary[f"{model_name}_top_feature"] = feature_importance.iloc[0]['feature']
+        # wandb_run.summary[f"{model_name}_top_importance"] = feature_importance.iloc[0]['importance']
+        #
+        # # Log feature importance table
+        # importance_table = wandb.Table(dataframe=feature_importance.head(20))
+        # wandb_run.log({f"{model_name}/feature_importance": importance_table})
 
     # Save model
     model_data = {
