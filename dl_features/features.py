@@ -214,3 +214,50 @@ def enhance_region_features(X):
 
     print(f"Added {X_enhanced.shape[1] - X.shape[1]} region-focused features")
     return X_enhanced
+
+
+def prepare_features_for_dl(df, target_col='converted'):
+    """
+    Prepare features for deep learning by converting all categorical to numeric.
+    """
+    import pandas as pd
+    import numpy as np
+    from sklearn.preprocessing import LabelEncoder
+
+    print("\n" + "=" * 80)
+    print("🔧 PREPARING FEATURES FOR DEEP LEARNING")
+    print("=" * 80)
+
+    # Make a copy
+    df = df.copy()
+
+    # Check if target exists
+    has_target = target_col in df.columns
+
+    if has_target:
+        y = df[target_col].copy()
+        X = df.drop(columns=[target_col])
+        print(f"✓ Target column '{target_col}' found")
+    else:
+        y = None
+        X = df.copy()
+        print(f"⚠️ No target column '{target_col}' found")
+
+    # Process numeric columns
+    numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+
+    X_processed = X[numeric_cols].copy()
+
+    # Handle categorical columns (simplified)
+    for col in categorical_cols:
+        if len(X[col].unique()) > 1:
+            # Simple ordinal encoding
+            X_processed[f'{col}_encoded'] = pd.factorize(X[col])[0]
+
+    # Handle NaN
+    X_processed = X_processed.fillna(0)
+
+    print(f"\n✅ Final features: {X_processed.shape[1]}")
+
+    return X_processed, y
