@@ -317,3 +317,148 @@ def visualise_conversion_by_brand_price(customers, price_var='max_out_of_pocket'
 
     plt.tight_layout()
     plt.show()
+
+
+def show_two_panel_conversion_by_brand_price(customers, price_var='max_out_of_pocket'):
+    customers_clean = remove_price_outliers(customers, price_var=price_var)
+    top_brands = customers_clean['main_brand'].value_counts().head(8).index.tolist()
+    colors = ['purple', 'green', 'blue', 'orange']
+
+    # Create a 2-panel figure: individual curves + summary table
+    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+    fig.suptitle('Brand Price Analysis: TTC Conversion Curves', fontsize=16, fontweight='bold')
+
+    # Panel 1: Individual brand curves
+    ax1 = axes[0]
+
+    for idx, (brand, color) in enumerate(zip(top_brands, colors)):
+        subset = customers_clean[customers_clean['main_brand'] == brand]
+
+        if len(subset) > 200:
+            subset['price_bin'] = pd.qcut(subset['avg_out_of_pocket'], q=8, duplicates='drop')
+            bin_conv = subset.groupby('price_bin')['converted'].mean() * 100
+            bin_price = subset.groupby('price_bin')['avg_out_of_pocket'].mean()
+
+            ax1.plot(bin_price, bin_conv, 'o-', color=color, linewidth=2,
+                     label=brand, alpha=0.7, markersize=4)
+
+    ax1.set_xlabel('Price TTC After Subsidies (€)')
+    ax1.set_ylabel('Conversion Rate (%)')
+    ax1.set_title('Brand Price Sensitivity')
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc='upper right', ncol=2, fontsize=8)
+    ax1.set_xlim(0, 30000)
+    ax1.set_ylim(0, 70)
+
+    # Panel 2: Summary statistics table
+    ax2 = axes[1]
+    ax2.axis('off')
+
+    # Prepare summary data
+    summary_data = []
+    for brand in top_brands:
+        subset = customers_clean[customers_clean['main_brand'] == brand]
+        if len(subset) > 100:
+            # Find best price range
+            subset['price_bin'] = pd.qcut(subset['avg_out_of_pocket'], q=5, duplicates='drop')
+            bin_stats = subset.groupby('price_bin')['converted'].mean()
+            best_bin = bin_stats.idxmax()
+            best_conv = bin_stats.max() * 100
+            best_price_range = f"€{best_bin.left:,.0f}-{best_bin.right:,.0f}"
+
+            summary_data.append([
+                brand,
+                f"{len(subset):,}",
+                f"{subset['converted'].mean() * 100:.1f}%",
+                f"€{subset['avg_out_of_pocket'].mean():,.0f}",
+                best_price_range,
+                f"{best_conv:.1f}%"
+            ])
+
+    # Create table
+    table = ax2.table(cellText=summary_data,
+                      colLabels=['Brand', 'Customers', 'Avg Conv', 'Avg Price', 'Best Price Range', 'Best Conv'],
+                      cellLoc='left',
+                      loc='center',
+                      colWidths=[0.15, 0.1, 0.1, 0.15, 0.25, 0.1])
+
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1.2, 1.5)
+
+    # Color code by performance
+    for i, row in enumerate(summary_data):
+        conv = float(row[2].strip('%'))
+        if conv > 45:
+            table[(i + 1, 2)].set_facecolor('lightgreen')
+        elif conv < 35:
+            table[(i + 1, 2)].set_facecolor('lightcoral')
+
+    ax2.set_title('Brand Performance Summary', fontsize=12, fontweight='bold')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_conversion_by_equipment_type_brand_price(customers, price_var='max_out_of_pocket'):
+    print("\n" + "=" * 80)
+    print("TTC Price-conversion curves: 4 equipment types, multiple brands per graph")
+    print("=" * 80)
+
+    customers_clean = remove_price_outliers(customers, price_var=price_var)
+
+    # Equipment types to analyze
+    equipment_types = ['Heat Pump', 'Boiler', 'Stove', 'AC']
+    fig, axes = plt.subplots(2, 2, figsize=(18, 12))
+    fig.suptitle('TTC Price-Conversion Curves: One Graph Per Equipment Type', fontsize=16, fontweight='bold')
+
+    # Flatten axes for iteration
+    axes = axes.flatten()
+
+    for idx, equipment in enumerate(equipment_types):
+        ax = axes[idx]
+
+        # Filter for this equipment type
+        equip_subset = customers_clean[customers_clean['main_equipment_category'] == equipment]
+
+        # Get top brands for this equipment type (minimum 50 customers)
+        brand_counts = equip_subset['main_brand'].value_counts()
+        top_brands_equip = brand_counts[brand_counts > 50].head(6).index.tolist()
+
+        print(f"\n{equipment} - Top brands: {top_brands_equip}")
+
+        # Use colormap for brands
+        colors = plt.cm.tab10(np.linspace(0, 1, len(top_brands_equip)))
+
+        for brand_idx, (brand, color) in enumerate(zip(top_brands_equip, colors)):
+            brand_subset = equip_subset[equip_subset['main_brand'] == brand]
+
+            if len(brand_subset) > 30:  # Need enough data points
+                # Create price bins using TTC out_of_pocket
+                try:
+                    brand_subset['price_bin'] = pd.qcut(brand_subset['avg_out_of_pocket'], q=5, duplicates='drop')
+                    bin_conv = brand_subset.groupby('price_bin')['converted'].mean() * 100
+                    bin_price = brand_subset.groupby('price_bin')['avg_out_of_pocket'].mean()
+
+                    # Plot line for this brand
+                    ax.plot(bin_price, bin_conv, 'o-', color=color, linewidth=2,
+                            label=f'{brand} (n={len(brand_subset):,})', alpha=0.8, markersize=4)
+                except:
+                    print(f"    Skipping {brand} - insufficient price variation")
+
+        # Add average line for this equipment type
+        equip_avg = equip_subset['converted'].mean() * 100
+        ax.axhline(y=equip_avg, color='black', linestyle='--', linewidth=1,
+                   label=f'{equipment} avg: {equip_avg:.1f}%', alpha=0.5)
+
+        # Labels and formatting
+        ax.set_xlabel('TTC Price After Subsidies (€)', fontsize=10)
+        ax.set_ylabel('Conversion Rate (%)', fontsize=10)
+        ax.set_title(f'{equipment} (n={len(equip_subset):,} customers)', fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='best', fontsize=7)
+        ax.set_xlim(0, 25000)
+        ax.set_ylim(0, 80)
+
+    plt.tight_layout()
+    plt.show()

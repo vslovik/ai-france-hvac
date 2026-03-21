@@ -2,6 +2,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from scipy.stats import chi2_contingency
 
+from etl.price import remove_price_outliers
+
 
 def report_customer_conversion_by_subsidy_issue_status(customers):
     # Customer conversion by subsidy issue status
@@ -236,6 +238,69 @@ def visualize_customer_subsidy_issues_by_product(customers, top_products, no_iss
     for bar, val in zip(bars, [avg_no_issue, avg_with_issue]):
         ax2.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 200,
                  f'€{val:,.0f}', ha='center', fontsize=12, fontweight='bold')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_policy_suspension_impact(customers, price_var='max_out_of_pocket'):
+    print("\n" + "=" * 80)
+    print("Policy suspension impact")
+    print("=" * 80)
+
+    customers_clean = remove_price_outliers(customers, price_var=price_var)
+
+    # Compare conversion during vs outside suspensions
+    susp_conv = customers_clean.groupby('during_suspension')['converted'].agg(['mean', 'count'])
+    susp_conv.index = ['Normal Periods', 'During Suspension']
+    print("\nConversion during subsidy suspensions:")
+    print(susp_conv)
+
+    # Statistical test
+    susp_contingency = pd.crosstab(customers_clean['during_suspension'], customers_clean['converted'])
+    chi2, p_value, dof, expected = chi2_contingency(susp_contingency)
+    print(f"\nSuspension impact p-value: {p_value:.6e}")
+    print(f"Statistically significant: {'YES' if p_value < 0.05 else 'NO'}")
+
+    # Check if product mix shifts during suspensions
+    print("\nProduct mix during suspensions:")
+    product_mix_susp = pd.crosstab(
+        customers_clean['during_suspension'],
+        customers_clean['main_equipment_category'],
+        normalize='index'
+    ) * 100
+    print(product_mix_susp.round(1))
+
+    # Visualization
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle('Impact of Subsidy Suspensions on Customer Conversion', fontsize=14, fontweight='bold')
+
+    # Plot 1: Conversion comparison
+    ax1 = axes[0]
+    bars = ax1.bar(['Normal Periods', 'During Suspension'],
+                   [susp_conv.loc['Normal Periods', 'mean'], susp_conv.loc['During Suspension', 'mean']],
+                   color=['steelblue', 'red'], alpha=0.7)
+    ax1.set_ylabel('Customer Conversion Rate')
+    ax1.set_title('Conversion Rate: Normal vs Suspension Periods')
+    ax1.grid(True, alpha=0.3, axis='y')
+
+    for bar, (period, row) in zip(bars, susp_conv.iterrows()):
+        ax1.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 0.01,
+                 f'{row["mean"]:.1%}\nn={int(row["count"]):,}',
+                 ha='center', fontweight='bold')
+
+    # Plot 2: Heat pump adoption during suspensions
+    ax2 = axes[1]
+    hp_susp = customers_clean.groupby('during_suspension')['ever_bought_heat_pump'].mean() * 100
+    bars = ax2.bar(['Normal Periods', 'During Suspension'], hp_susp.values,
+                   color=['steelblue', 'red'], alpha=0.7)
+    ax2.set_ylabel('Heat Pump Adoption (%)')
+    ax2.set_title('Heat Pump Adoption: Normal vs Suspension')
+    ax2.grid(True, alpha=0.3, axis='y')
+
+    for bar, val in zip(bars, hp_susp.values):
+        ax2.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
+                 f'{val:.1f}%', ha='center', fontweight='bold')
 
     plt.tight_layout()
     plt.show()
