@@ -50,40 +50,68 @@ def visualize_conversion_by_year(customers, price_var='max_out_of_pocket'):
 
 
 def report_best_and_worst_months(customers, price_var='max_out_of_pocket'):
+    print("\n" + "=" * 80)
+    print("Best and Worst Months Report")
+    print("=" * 80)
 
+    # Remove outliers if needed
     customers_clean = remove_price_outliers(customers, price_var=price_var)
-    season_order = ['Winter', 'Spring', 'Summer', 'Fall']
-    susp_conv = customers_clean.groupby('during_suspension')['converted'].agg(['mean', 'count'])
-    susp_conv.index = ['Normal Periods', 'During Suspension']
+
+    # Check during_suspension unique values
+    unique_susp = customers_clean['during_suspension'].unique()
+
+    # Only create suspension comparison if both values exist
+    if len(unique_susp) == 2:
+        susp_conv = customers_clean.groupby('during_suspension')['converted'].agg(['mean', 'count'])
+        susp_conv.index = ['Normal Periods', 'During Suspension']
+        print("\nConversion during subsidy suspensions:")
+        print(susp_conv)
+
+        # Statistical test
+        from scipy.stats import chi2_contingency
+        susp_contingency = pd.crosstab(customers_clean['during_suspension'], customers_clean['converted'])
+        chi2, p_value, dof, expected = chi2_contingency(susp_contingency)
+        print(f"\nSuspension impact p-value: {p_value:.4f}")
+        print(f"Statistically significant: {'YES' if p_value < 0.05 else 'NO'}")
+    else:
+        print(f"\n⚠️  Only one suspension period found: {unique_susp}")
+        print("Skipping suspension comparison")
 
     # Best and worst months
     monthly_stats = customers_clean.groupby('month')['converted'].agg(['mean', 'count'])
-    best_month = monthly_stats['mean'].idxmax()
-    worst_month = monthly_stats['mean'].idxmin()
-    print(
-        f"\nBest month: {best_month} ({monthly_stats.loc[best_month, 'mean']:.1%}, n={monthly_stats.loc[best_month, 'count']:.0f})")
-    print(
-        f"Worst month: {worst_month} ({monthly_stats.loc[worst_month, 'mean']:.1%}, n={monthly_stats.loc[worst_month, 'count']:.0f})")
+    monthly_stats = monthly_stats.reindex(range(1, 13)).fillna(0)
+
+    best_month = monthly_stats['mean'].idxmax() if monthly_stats['mean'].max() > 0 else None
+    worst_month = monthly_stats['mean'].idxmin() if monthly_stats['mean'].min() > 0 else None
+
+    if best_month:
+        print(
+            f"\nBest month: {best_month} ({monthly_stats.loc[best_month, 'mean']:.1%}, n={monthly_stats.loc[best_month, 'count']:.0f})")
+    if worst_month:
+        print(
+            f"Worst month: {worst_month} ({monthly_stats.loc[worst_month, 'mean']:.1%}, n={monthly_stats.loc[worst_month, 'count']:.0f})")
 
     # Best and worst seasons
     seasonal_stats = customers_clean.groupby('season')['converted'].agg(['mean', 'count'])
-    best_season = seasonal_stats['mean'].idxmax()
-    worst_season = seasonal_stats['mean'].idxmin()
-    print(f"\nBest season: {best_season} ({seasonal_stats.loc[best_season, 'mean']:.1%})")
-    print(f"Worst season: {worst_season} ({seasonal_stats.loc[worst_season, 'mean']:.1%})")
 
-    # Suspension impact
-    print(
-        f"\nSuspension periods impact: {susp_conv.loc['During Suspension', 'mean']:.1%} vs {susp_conv.loc['Normal Periods', 'mean']:.1%}")
-    print(
-        f"Difference: {(susp_conv.loc['During Suspension', 'mean'] - susp_conv.loc['Normal Periods', 'mean']) * 100:.1f} points")
+    best_season = seasonal_stats['mean'].idxmax() if seasonal_stats['mean'].max() > 0 else None
+    worst_season = seasonal_stats['mean'].idxmin() if seasonal_stats['mean'].min() > 0 else None
+
+    if best_season:
+        print(f"\nBest season: {best_season} ({seasonal_stats.loc[best_season, 'mean']:.1%})")
+    if worst_season:
+        print(f"Worst season: {worst_season} ({seasonal_stats.loc[worst_season, 'mean']:.1%})")
 
     # Heat pump seasonality
-    hp_seasonal = customers_clean[customers_clean['ever_bought_heat_pump']].groupby('season')['converted'].mean()
-    print(f"\nHeat pump conversion by season:")
-    for season in season_order:
-        if season in hp_seasonal.index:
-            print(f"  {season}: {hp_seasonal[season]:.1%}")
+    hp_customers = customers_clean[customers_clean['ever_bought_heat_pump']]
+    if len(hp_customers) > 0:
+        hp_seasonal = hp_customers.groupby('season')['converted'].mean()
+        print(f"\nHeat pump conversion by season:")
+        for season in ['Winter', 'Spring', 'Summer', 'Fall']:
+            if season in hp_seasonal.index:
+                print(f"  {season}: {hp_seasonal[season]:.1%}")
+
+    return monthly_stats, seasonal_stats
 
 
 def show_conversion_by_price_over_time(customers, price_var='max_out_of_pocket'):

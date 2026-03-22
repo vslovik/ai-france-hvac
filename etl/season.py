@@ -1,12 +1,39 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from scipy.stats import chi2_contingency
 
 from etl.price import remove_price_outliers
 
 
 def visualize_conversion_by_season(customers, price_var='max_out_of_pocket'):
-    customers_clean = remove_price_outliers(customers, price_var=price_var)
+    print("\n" + "=" * 80)
+    print("Seasonal Effects on Customer Conversion")
+    print("=" * 80)
+
+    # Ensure date column exists and is datetime
+    if 'first_quote_date' not in customers.columns:
+        print("Error: 'first_quote_date' column not found")
+        return
+
+    customers_clean = customers.copy()
+    customers_clean['first_quote_date'] = pd.to_datetime(customers_clean['first_quote_date'])
+    customers_clean['year'] = customers_clean['first_quote_date'].dt.year
+    customers_clean['month'] = customers_clean['first_quote_date'].dt.month
+    customers_clean['quarter'] = customers_clean['first_quote_date'].dt.quarter
+
+    # Create season
+    def get_season(month):
+        if month in [12, 1, 2]:
+            return 'Winter'
+        elif month in [3, 4, 5]:
+            return 'Spring'
+        elif month in [6, 7, 8]:
+            return 'Summer'
+        else:
+            return 'Fall'
+
+    customers_clean['season'] = customers_clean['month'].apply(get_season)
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     fig.suptitle('Seasonal Effects on Customer Conversion', fontsize=16, fontweight='bold')
@@ -14,7 +41,7 @@ def visualize_conversion_by_season(customers, price_var='max_out_of_pocket'):
     # Plot 1: Conversion by month
     ax1 = axes[0, 0]
     monthly_conv = customers_clean.groupby('month')['converted'].agg(['mean', 'count'])
-    monthly_conv = monthly_conv.reindex(range(1, 13))  # Ensure all months show
+    monthly_conv = monthly_conv.reindex(range(1, 13)).fillna(0)
 
     bars = ax1.bar(monthly_conv.index, monthly_conv['mean'] * 100,
                    color='steelblue', alpha=0.7)
@@ -26,16 +53,17 @@ def visualize_conversion_by_season(customers, price_var='max_out_of_pocket'):
                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
     ax1.grid(True, alpha=0.3, axis='y')
 
-    # Add sample sizes
+    # Add sample sizes (handle NaN)
     for i, (month, row) in enumerate(monthly_conv.iterrows()):
-        ax1.text(month, row['mean'] * 100 + 1, f'n={int(row["count"]):,}',
-                 ha='center', fontsize=8, rotation=45)
+        if row['count'] > 0:
+            ax1.text(month, row['mean'] * 100 + 1, f'n={int(row["count"]):,}',
+                     ha='center', fontsize=8, rotation=45)
 
     # Plot 2: Conversion by season
     ax2 = axes[0, 1]
     season_order = ['Winter', 'Spring', 'Summer', 'Fall']
     seasonal_conv = customers_clean.groupby('season')['converted'].agg(['mean', 'count'])
-    seasonal_conv = seasonal_conv.reindex(season_order)
+    seasonal_conv = seasonal_conv.reindex(season_order).fillna(0)
 
     bars = ax2.bar(season_order, seasonal_conv['mean'] * 100,
                    color=['lightblue', 'lightgreen', 'orange', 'brown'], alpha=0.7)
@@ -45,9 +73,10 @@ def visualize_conversion_by_season(customers, price_var='max_out_of_pocket'):
     ax2.grid(True, alpha=0.3, axis='y')
 
     for bar, (season, row) in zip(bars, seasonal_conv.iterrows()):
-        ax2.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
-                 f'{row["mean"] * 100:.1f}%\nn={int(row["count"]):,}',
-                 ha='center', fontweight='bold')
+        if row['count'] > 0:
+            ax2.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
+                     f'{row["mean"] * 100:.1f}%\nn={int(row["count"]):,}',
+                     ha='center', fontweight='bold')
 
     # Plot 3: Product mix by season
     ax3 = axes[1, 0]
@@ -77,21 +106,27 @@ def visualize_conversion_by_season(customers, price_var='max_out_of_pocket'):
 
     # Plot 4: Heat pump conversion by season
     ax4 = axes[1, 1]
-    hp_seasonal = customers_clean[customers_clean['ever_bought_heat_pump']].groupby('season')['converted'].agg(
-        ['mean', 'count'])
-    hp_seasonal = hp_seasonal.reindex(season_order)
+    hp_customers = customers_clean[customers_clean['ever_bought_heat_pump']]
+    if len(hp_customers) > 0:
+        hp_seasonal = hp_customers.groupby('season')['converted'].agg(['mean', 'count'])
+        hp_seasonal = hp_seasonal.reindex(season_order).fillna(0)
 
-    bars = ax4.bar(season_order, hp_seasonal['mean'] * 100,
-                   color='green', alpha=0.7)
-    ax4.set_xlabel('Season')
-    ax4.set_ylabel('Heat Pump Conversion Rate (%)')
-    ax4.set_title('Heat Pump Conversion by Season')
-    ax4.grid(True, alpha=0.3, axis='y')
+        bars = ax4.bar(season_order, hp_seasonal['mean'] * 100,
+                       color='green', alpha=0.7)
+        ax4.set_xlabel('Season')
+        ax4.set_ylabel('Heat Pump Conversion Rate (%)')
+        ax4.set_title('Heat Pump Conversion by Season')
+        ax4.grid(True, alpha=0.3, axis='y')
 
-    for bar, (season, row) in zip(bars, hp_seasonal.iterrows()):
-        ax4.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
-                 f'{row["mean"] * 100:.1f}%\nn={int(row["count"]):,}',
-                 ha='center', fontweight='bold')
+        for bar, (season, row) in zip(bars, hp_seasonal.iterrows()):
+            if row['count'] > 0:
+                ax4.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
+                         f'{row["mean"] * 100:.1f}%\nn={int(row["count"]):,}',
+                         ha='center', fontweight='bold')
+    else:
+        ax4.text(0.5, 0.5, 'No heat pump customers found',
+                 ha='center', va='center', transform=ax4.transAxes)
+        ax4.set_title('Heat Pump Conversion (No Data)')
 
     plt.tight_layout()
     plt.show()
@@ -104,14 +139,16 @@ def visualize_conversion_by_season(customers, price_var='max_out_of_pocket'):
     print("\nConversion by season:")
     for season in season_order:
         subset = customers_clean[customers_clean['season'] == season]
-        print(f"  {season}: {subset['converted'].mean():.1%} (n={len(subset):,})")
+        if len(subset) > 0:
+            print(f"  {season}: {subset['converted'].mean():.1%} (n={len(subset):,})")
 
     # Statistical test for seasonality
-    from scipy.stats import chi2_contingency
-    season_contingency = pd.crosstab(customers_clean['season'], customers_clean['converted'])
-    chi2, p_value, dof, expected = chi2_contingency(season_contingency)
-    print(f"\nSeasonality chi-square p-value: {p_value:.6f}")
-    print(f"Statistically significant: {'YES' if p_value < 0.05 else 'NO'}")
+    if len(customers_clean['season'].dropna()) > 0:
+        from scipy.stats import chi2_contingency
+        season_contingency = pd.crosstab(customers_clean['season'], customers_clean['converted'])
+        chi2, p_value, dof, expected = chi2_contingency(season_contingency)
+        print(f"\nSeasonality chi-square p-value: {p_value:.4f}")
+        print(f"Statistically significant: {'YES' if p_value < 0.05 else 'NO'}")
 
 
 def visualize_regional_seasonality(customers, price_var='max_out_of_pocket'):

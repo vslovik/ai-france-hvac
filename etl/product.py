@@ -469,3 +469,223 @@ def show_product_type_by_agency_heatmap(customers):
     for agency, conv in heat_pump_agencies.items():
         volume = product_agency_counts.loc['Heat Pump', agency]
         print(f"  {agency}: {conv:.1f}% (n={volume:,})")
+
+
+def show_brand_by_product_type_heatmap(customers):
+    # Create Product/Brand Heatmap (Product Type as columns, Brand as rows - swapped axes)
+    fig, axes = plt.subplots(1, 2, figsize=(22, 14))
+    fig.suptitle('Product vs Brand Analysis (Brands × Product Types)', fontsize=16, fontweight='bold')
+
+    # ============================================================================
+    # HEAT MAP 1: Volume (Number of Customers) by Brand and Product
+    # ============================================================================
+    ax1 = axes[0]
+
+    # Get top brands and product categories
+    top_brands = customers['main_brand'].value_counts().head(12).index.tolist()
+    product_cats = ['Heat Pump', 'Boiler', 'Stove', 'AC', 'Other']
+
+    # Create a crosstab of brand vs product (counts) - SWAPPED: brands as rows, products as columns
+    brand_product_counts = pd.crosstab(
+        customers['main_brand'],
+        customers['main_equipment_category']
+    )
+
+    # Filter to top brands only
+    brand_product_counts = brand_product_counts.loc[top_brands]
+
+    # Create heatmap (rows = brands, columns = products)
+    im1 = ax1.imshow(brand_product_counts, cmap='YlOrRd', aspect='auto')
+    ax1.set_yticks(range(len(top_brands)))
+    ax1.set_yticklabels(top_brands, fontsize=9)
+    ax1.set_xticks(range(len(product_cats)))
+    ax1.set_xticklabels(product_cats, rotation=45, ha='right')
+    ax1.set_xlabel('Product Type')
+    ax1.set_ylabel('Brand')
+    ax1.set_title('Customer Volume: Number of Customers by Brand and Product')
+
+    # Add colorbar
+    plt.colorbar(im1, ax=ax1, label='Number of Customers')
+
+    # Add value annotations
+    for i in range(len(top_brands)):
+        for j in range(len(product_cats)):
+            value = brand_product_counts.iloc[i, j]
+            if value > 50:  # Only show larger values
+                color = 'white' if value > 500 else 'black'
+                ax1.text(j, i, f'{value}', ha='center', va='center', color=color, fontweight='bold')
+
+    # ============================================================================
+    # HEAT MAP 2: Conversion Rate by Brand and Product
+    # ============================================================================
+    ax2 = axes[1]
+
+    # Create pivot table of conversion rate by brand and product - SWAPPED: brands as rows, products as columns
+    brand_product_conv = customers.pivot_table(
+        values='converted',
+        index='main_brand',
+        columns='main_equipment_category',
+        aggfunc='mean'
+    ) * 100
+
+    # Filter to top brands only
+    brand_product_conv = brand_product_conv.loc[top_brands]
+
+    # Create heatmap (rows = brands, columns = products)
+    im2 = ax2.imshow(brand_product_conv, cmap='RdYlGn', aspect='auto', vmin=20, vmax=60)
+    ax2.set_yticks(range(len(top_brands)))
+    ax2.set_yticklabels(top_brands, fontsize=9)
+    ax2.set_xticks(range(len(product_cats)))
+    ax2.set_xticklabels(product_cats, rotation=45, ha='right')
+    ax2.set_xlabel('Product Type')
+    ax2.set_ylabel('Brand')
+    ax2.set_title('Conversion Rate (%) by Brand and Product')
+
+    # Add colorbar
+    plt.colorbar(im2, ax=ax2, label='Conversion Rate (%)')
+
+    # Add value annotations
+    for i in range(len(top_brands)):
+        for j in range(len(product_cats)):
+            value = brand_product_conv.iloc[i, j]
+            if not np.isnan(value):
+                color = 'white' if value > 45 else 'black'
+                ax2.text(j, i, f'{value:.0f}%', ha='center', va='center', color=color, fontweight='bold')
+
+    plt.tight_layout()
+    plt.show()
+
+    # ============================================================================
+    # Detailed Analysis Tables
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("BRAND × PRODUCT ANALYSIS (Swapped Axes)")
+    print("=" * 80)
+
+    # Table 1: Volume (Customer Count)
+    print("\n📊 CUSTOMER VOLUME (Number of Customers):")
+    print("-" * 80)
+    volume_table = brand_product_counts.copy()
+    print(volume_table.to_string())
+
+    # Table 2: Conversion Rates
+    print("\n" + "=" * 80)
+    print("📈 CONVERSION RATES (%):")
+    print("-" * 80)
+    conv_table = brand_product_conv.round(1)
+    print(conv_table.to_string())
+
+    # Table 3: Best Product for Each Brand
+    print("\n" + "=" * 80)
+    print("🏆 BEST PRODUCT BY BRAND")
+    print("-" * 80)
+
+    for brand in top_brands[:10]:  # Top 10 brands
+        if brand in brand_product_conv.index:
+            brand_data = brand_product_conv.loc[brand].dropna().sort_values(ascending=False)
+            if len(brand_data) > 0:
+                best_product = brand_data.index[0]
+                best_conv = brand_data.iloc[0]
+                volume = brand_product_counts.loc[brand, best_product]
+
+                print(f"\n{brand}:")
+                print(f"  Best product: {best_product}")
+                print(f"  Conversion: {best_conv:.1f}%")
+                print(f"  Customers: {volume:,}")
+
+                # Show top 3 products
+                print(f"  Top 3 products:")
+                for i in range(min(3, len(brand_data))):
+                    product = brand_data.index[i]
+                    conv = brand_data.iloc[i]
+                    vol = brand_product_counts.loc[brand, product]
+                    print(f"    {i + 1}. {product}: {conv:.1f}% (n={vol:,})")
+
+    # Table 4: Best Brand for Each Product
+    print("\n" + "=" * 80)
+    print("🏆 BEST BRAND BY PRODUCT TYPE")
+    print("-" * 80)
+
+    for product in product_cats:
+        if product in brand_product_conv.columns:
+            product_data = brand_product_conv[product].dropna().sort_values(ascending=False)
+            if len(product_data) > 0:
+                best_brand = product_data.index[0]
+                best_conv = product_data.iloc[0]
+                volume = brand_product_counts.loc[best_brand, product]
+
+                print(f"\n{product}:")
+                print(f"  Best brand: {best_brand}")
+                print(f"  Conversion: {best_conv:.1f}%")
+                print(f"  Customers: {volume:,}")
+
+                # Show top 5 brands for this product
+                print(f"  Top 5 brands:")
+                for i in range(min(5, len(product_data))):
+                    brand = product_data.index[i]
+                    conv = product_data.iloc[i]
+                    vol = brand_product_counts.loc[brand, product]
+                    print(f"    {i + 1}. {brand}: {conv:.1f}% (n={vol:,})")
+
+    # ============================================================================
+    # Strategic Insights
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("💡 STRATEGIC INSIGHTS")
+    print("=" * 80)
+
+    # Find where each brand excels
+    print("\nBrand Performance by Product Category:")
+    for brand in top_brands[:8]:
+        if brand in brand_product_conv.index:
+            brand_data = brand_product_conv.loc[brand].dropna().sort_values(ascending=False)
+            if len(brand_data) > 0:
+                print(f"\n{brand}:")
+                for i in range(min(3, len(brand_data))):
+                    product = brand_data.index[i]
+                    conv = brand_data.iloc[i]
+                    vol = brand_product_counts.loc[brand, product]
+                    print(f"  {product}: {conv:.1f}% (n={vol:,})")
+
+    # Find which brand dominates each product category
+    print("\n" + "=" * 80)
+    print("🏆 MARKET LEADERS BY PRODUCT CATEGORY")
+    print("=" * 80)
+
+    for product in product_cats:
+        if product in brand_product_counts.columns:
+            # Volume leader
+            volume_leader = brand_product_counts[product].idxmax()
+            volume_leader_count = brand_product_counts.loc[volume_leader, product]
+            total_volume = brand_product_counts[product].sum()
+            market_share = (volume_leader_count / total_volume) * 100
+
+            # Conversion leader
+            if product in brand_product_conv.columns:
+                conv_leader_data = brand_product_conv[product].dropna()
+                if len(conv_leader_data) > 0:
+                    conv_leader = conv_leader_data.idxmax()
+                    conv_leader_rate = conv_leader_data.max()
+
+                    print(f"\n{product}:")
+                    print(
+                        f"  Volume leader: {volume_leader} ({volume_leader_count:,} customers, {market_share:.1f}% share)")
+                    print(f"  Conversion leader: {conv_leader} ({conv_leader_rate:.1f}%)")
+
+    # Check for "LBC" brands specifically
+    lbc_brands = [b for b in top_brands if 'LBC' in b.upper()]
+    if lbc_brands:
+        print("\n" + "=" * 80)
+        print("🔍 LBC BRAND ANALYSIS")
+        print("=" * 80)
+        for lbc in lbc_brands:
+            print(f"\n{lbc}:")
+            if lbc in brand_product_conv.index:
+                lbc_data = brand_product_conv.loc[lbc].dropna().sort_values(ascending=False)
+                print(f"  Best product: {lbc_data.index[0]} ({lbc_data.iloc[0]:.1f}%)")
+                print(f"  All products:")
+                for product in lbc_data.index:
+                    vol = brand_product_counts.loc[lbc, product]
+                    print(f"    {product}: {lbc_data[product]:.1f}% (n={vol:,})")
+
+    return brand_product_counts, brand_product_conv

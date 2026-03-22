@@ -245,31 +245,51 @@ def visualize_customer_subsidy_issues_by_product(customers, top_products, no_iss
 
 def visualize_policy_suspension_impact(customers, price_var='max_out_of_pocket'):
     print("\n" + "=" * 80)
-    print("Policy suspension impact")
+    print("Policy Suspension Impact")
     print("=" * 80)
 
+    # Remove outliers if needed
     customers_clean = remove_price_outliers(customers, price_var=price_var)
+
+    # Check unique values in during_suspension
+    unique_values = customers_clean['during_suspension'].unique()
+    print(f"Unique values in during_suspension: {unique_values}")
 
     # Compare conversion during vs outside suspensions
     susp_conv = customers_clean.groupby('during_suspension')['converted'].agg(['mean', 'count'])
-    susp_conv.index = ['Normal Periods', 'During Suspension']
+
+    # Handle cases where only one value exists
+    if len(susp_conv) == 1:
+        # Only one period exists
+        if susp_conv.index[0] == True:
+            susp_conv.index = ['During Suspension']
+            print("\n⚠️  Only data during suspension periods available")
+        else:
+            susp_conv.index = ['Normal Periods']
+            print("\n⚠️  Only data during normal periods available")
+    else:
+        # Both periods exist
+        susp_conv.index = ['Normal Periods', 'During Suspension']
+
     print("\nConversion during subsidy suspensions:")
     print(susp_conv)
 
-    # Statistical test
-    susp_contingency = pd.crosstab(customers_clean['during_suspension'], customers_clean['converted'])
-    chi2, p_value, dof, expected = chi2_contingency(susp_contingency)
-    print(f"\nSuspension impact p-value: {p_value:.6e}")
-    print(f"Statistically significant: {'YES' if p_value < 0.05 else 'NO'}")
+    # Statistical test if both periods exist
+    if len(susp_conv) == 2:
+        susp_contingency = pd.crosstab(customers_clean['during_suspension'], customers_clean['converted'])
+        chi2, p_value, dof, expected = chi2_contingency(susp_contingency)
+        print(f"\nSuspension impact p-value: {p_value:.4f}")
+        print(f"Statistically significant: {'YES' if p_value < 0.05 else 'NO'}")
 
-    # Check if product mix shifts during suspensions
-    print("\nProduct mix during suspensions:")
-    product_mix_susp = pd.crosstab(
-        customers_clean['during_suspension'],
-        customers_clean['main_equipment_category'],
-        normalize='index'
-    ) * 100
-    print(product_mix_susp.round(1))
+    # Check if product mix shifts during suspensions (only if both periods exist)
+    if len(susp_conv) == 2:
+        print("\nProduct mix during suspensions:")
+        product_mix_susp = pd.crosstab(
+            customers_clean['during_suspension'],
+            customers_clean['main_equipment_category'],
+            normalize='index'
+        ) * 100
+        print(product_mix_susp.round(1))
 
     # Visualization
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
@@ -277,30 +297,47 @@ def visualize_policy_suspension_impact(customers, price_var='max_out_of_pocket')
 
     # Plot 1: Conversion comparison
     ax1 = axes[0]
-    bars = ax1.bar(['Normal Periods', 'During Suspension'],
-                   [susp_conv.loc['Normal Periods', 'mean'], susp_conv.loc['During Suspension', 'mean']],
-                   color=['steelblue', 'red'], alpha=0.7)
+    if len(susp_conv) == 2:
+        bars = ax1.bar(['Normal Periods', 'During Suspension'],
+                       [susp_conv.loc['Normal Periods', 'mean'],
+                        susp_conv.loc['During Suspension', 'mean']],
+                       color=['steelblue', 'red'], alpha=0.7)
+
+        for bar, (period, row) in zip(bars, susp_conv.iterrows()):
+            ax1.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 0.01,
+                     f'{row["mean"]:.1%}\nn={int(row["count"]):,}',
+                     ha='center', fontweight='bold')
+    else:
+        # Single period case
+        period_label = susp_conv.index[0]
+        bars = ax1.bar([period_label], [susp_conv.iloc[0]['mean']],
+                       color='steelblue', alpha=0.7)
+        bar = bars[0]  # Get the first (and only) bar
+        ax1.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 0.01,
+                 f'{susp_conv.iloc[0]["mean"]:.1%}\nn={int(susp_conv.iloc[0]["count"]):,}',
+                 ha='center', fontweight='bold')
+
     ax1.set_ylabel('Customer Conversion Rate')
     ax1.set_title('Conversion Rate: Normal vs Suspension Periods')
     ax1.grid(True, alpha=0.3, axis='y')
 
-    for bar, (period, row) in zip(bars, susp_conv.iterrows()):
-        ax1.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 0.01,
-                 f'{row["mean"]:.1%}\nn={int(row["count"]):,}',
-                 ha='center', fontweight='bold')
-
     # Plot 2: Heat pump adoption during suspensions
     ax2 = axes[1]
-    hp_susp = customers_clean.groupby('during_suspension')['ever_bought_heat_pump'].mean() * 100
-    bars = ax2.bar(['Normal Periods', 'During Suspension'], hp_susp.values,
-                   color=['steelblue', 'red'], alpha=0.7)
-    ax2.set_ylabel('Heat Pump Adoption (%)')
-    ax2.set_title('Heat Pump Adoption: Normal vs Suspension')
-    ax2.grid(True, alpha=0.3, axis='y')
+    if len(susp_conv) == 2:
+        hp_susp = customers_clean.groupby('during_suspension')['ever_bought_heat_pump'].mean() * 100
+        bars = ax2.bar(['Normal Periods', 'During Suspension'], hp_susp.values,
+                       color=['steelblue', 'red'], alpha=0.7)
+        ax2.set_ylabel('Heat Pump Adoption (%)')
+        ax2.set_title('Heat Pump Adoption: Normal vs Suspension')
+        ax2.grid(True, alpha=0.3, axis='y')
 
-    for bar, val in zip(bars, hp_susp.values):
-        ax2.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
-                 f'{val:.1f}%', ha='center', fontweight='bold')
+        for bar, val in zip(bars, hp_susp.values):
+            ax2.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
+                     f'{val:.1f}%', ha='center', fontweight='bold')
+    else:
+        ax2.text(0.5, 0.5, f'Only {susp_conv.index[0]} period data available\nNo comparison possible',
+                 ha='center', va='center', transform=ax2.transAxes)
+        ax2.set_title('Heat Pump Adoption (Insufficient Data)')
 
     plt.tight_layout()
     plt.show()
