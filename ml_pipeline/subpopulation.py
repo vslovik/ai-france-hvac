@@ -29,7 +29,7 @@ def run_pipeline(df_quotes):
     print(f"\n📊 Original quote data: {len(df_quotes):,} quotes from {df_quotes['numero_compte'].nunique():,} customers")
 
     print("\n" + "=" * 80)
-    print("🏗️  BUILDING FEATURES FOR COLD REGION CUSTOMERS")
+    print("🏗️  BUILDING FEATURES FOR SUBPOPULATION CUSTOMERS")
     print("=" * 80)
 
     feature_funcs = [create_customer_features, create_sequence_features, create_brand_features,
@@ -74,13 +74,13 @@ def run_pipeline(df_quotes):
     print(f"   Features: {X_clean.shape[1]}, Samples: {X_clean.shape[0]}")
 
     print("\n" + "=" * 80)
-    print("🚀 TRAINING MODEL ON COLD REGION CUSTOMERS")
+    print("🚀 TRAINING MODEL ON SUBPOPULATION CUSTOMERS")
     print("=" * 80)
 
     result = train_xgb(X_clean, y_clean, 'cold_region_model')
 
     print("\n" + "=" * 80)
-    print("📊 MODEL EVALUATION - COLD REGION CUSTOMERS")
+    print("📊 MODEL EVALUATION - SUBPOPULATION CUSTOMERS")
     print("=" * 80)
 
     df_eval = result['X_test'].copy()
@@ -89,7 +89,7 @@ def run_pipeline(df_quotes):
     model_evaluation_report(df_eval, result['model'], result['features'], 'converted')
 
     print("\n" + "=" * 80)
-    print("🔍 FEATURE IMPORTANCE - COLD REGION MODEL")
+    print("🔍 FEATURE IMPORTANCE - SUBPOPULATION MODEL")
     print("=" * 80)
 
     feature_importance = pd.DataFrame({
@@ -101,7 +101,7 @@ def run_pipeline(df_quotes):
     print(feature_importance.head(20))
 
     print("\n" + "=" * 80)
-    print("🧪 SIMULATION-DISCOVERY FEATURES IN COLD REGION MODEL")
+    print("🧪 SIMULATION-DISCOVERY FEATURES IN SUBPOPULATION MODEL")
     print("=" * 80)
 
     simulation_features = [
@@ -122,7 +122,7 @@ def run_pipeline(df_quotes):
             print(f"  ❌ {feat}: NOT FOUND")
 
     print("\n" + "=" * 80)
-    print("✅ COLD REGION MODEL TRAINING COMPLETE")
+    print("✅ MODEL TRAINING COMPLETE")
     print("=" * 80)
 
     return result
