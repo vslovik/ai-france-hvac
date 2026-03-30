@@ -59,7 +59,6 @@ def visualise_heat_pump_performance(customers, price_var='max_out_of_pocket'):
 
 
 def show_product_type_by_brand_heatmap(customers):
-
     # Create Product/Brand Heatmap (Product Type as rows, Brand as columns)
     fig, axes = plt.subplots(1, 2, figsize=(22, 10))
     fig.suptitle('Product vs Brand Analysis (Product Types × Brands)', fontsize=16, fontweight='bold')
@@ -71,7 +70,6 @@ def show_product_type_by_brand_heatmap(customers):
 
     # Get top brands and product categories
     top_brands = customers['main_brand'].value_counts().head(12).index.tolist()
-    product_cats = ['Heat Pump', 'Boiler', 'Stove', 'AC', 'Other']
 
     # Create a crosstab of product vs brand (counts)
     product_brand_counts = pd.crosstab(
@@ -81,6 +79,10 @@ def show_product_type_by_brand_heatmap(customers):
 
     # Filter to top brands only
     product_brand_counts = product_brand_counts[top_brands]
+
+    # GET THE ACTUAL PRODUCT CATEGORIES FROM THE DATA (not hardcoded)
+    product_cats = product_brand_counts.index.tolist()
+    print(f"Actual product categories in data: {product_cats}")
 
     # Create heatmap (rows = products, columns = brands)
     im1 = ax1.imshow(product_brand_counts, cmap='YlOrRd', aspect='auto')
@@ -118,6 +120,9 @@ def show_product_type_by_brand_heatmap(customers):
 
     # Filter to top brands only
     product_brand_conv = product_brand_conv[top_brands]
+
+    # Reindex to match product_cats order
+    product_brand_conv = product_brand_conv.reindex(product_cats)
 
     # Create heatmap (rows = products, columns = brands)
     im2 = ax2.imshow(product_brand_conv, cmap='RdYlGn', aspect='auto', vmin=20, vmax=60)
@@ -262,7 +267,12 @@ def show_product_type_by_agency_heatmap(customers):
 
     # Get top agencies by volume
     top_agencies = customers['main_agency'].value_counts().head(15).index.tolist()
-    product_cats = ['Heat Pump', 'Boiler', 'Stove', 'AC', 'Other']
+
+    # =========================================================================
+    # GET ACTUAL PRODUCT CATEGORIES FROM DATA (not hardcoded)
+    # =========================================================================
+    product_cats = customers['main_equipment_category'].value_counts().index.tolist()
+    print(f"\nActual product categories in data: {product_cats}")
 
     print(f"\nTop 15 agencies by customer volume:")
     for agency in top_agencies:
@@ -283,6 +293,9 @@ def show_product_type_by_agency_heatmap(customers):
 
     # Filter to top agencies only
     product_agency_counts = product_agency_counts[top_agencies]
+
+    # Reindex to match product_cats order
+    product_agency_counts = product_agency_counts.reindex(product_cats)
 
     # Create heatmap (rows = products, columns = agencies)
     im1 = ax1.imshow(product_agency_counts, cmap='YlOrRd', aspect='auto')
@@ -320,6 +333,9 @@ def show_product_type_by_agency_heatmap(customers):
 
     # Filter to top agencies only
     product_agency_conv = product_agency_conv[top_agencies]
+
+    # Reindex to match product_cats order
+    product_agency_conv = product_agency_conv.reindex(product_cats)
 
     # Create heatmap (rows = products, columns = agencies)
     im2 = ax2.imshow(product_agency_conv, cmap='RdYlGn', aspect='auto', vmin=20, vmax=60)
@@ -464,11 +480,15 @@ def show_product_type_by_agency_heatmap(customers):
     print("🔥 HEAT PUMP SPECIALISTS")
     print("=" * 80)
 
-    heat_pump_agencies = product_agency_conv.loc['Heat Pump'].dropna().sort_values(ascending=False).head(5)
-    print("\nTop 5 agencies for Heat Pump conversion:")
-    for agency, conv in heat_pump_agencies.items():
-        volume = product_agency_counts.loc['Heat Pump', agency]
-        print(f"  {agency}: {conv:.1f}% (n={volume:,})")
+    if 'Heat Pump' in product_agency_conv.index:
+        heat_pump_agencies = product_agency_conv.loc['Heat Pump'].dropna().sort_values(ascending=False).head(5)
+        print("\nTop 5 agencies for Heat Pump conversion:")
+        for agency, conv in heat_pump_agencies.items():
+            volume = product_agency_counts.loc['Heat Pump', agency] if 'Heat Pump' in product_agency_counts.index else 0
+            print(f"  {agency}: {conv:.1f}% (n={volume:,})")
+    else:
+        print("\n'Heat Pump' not found in product categories")
+        print(f"Available categories: {product_cats}")
 
 
 def show_brand_by_product_type_heatmap(customers):
@@ -483,7 +503,12 @@ def show_brand_by_product_type_heatmap(customers):
 
     # Get top brands and product categories
     top_brands = customers['main_brand'].value_counts().head(12).index.tolist()
-    product_cats = ['Heat Pump', 'Boiler', 'Stove', 'AC', 'Other']
+
+    # =========================================================================
+    # GET ACTUAL PRODUCT CATEGORIES FROM DATA (not hardcoded)
+    # =========================================================================
+    product_cats = customers['main_equipment_category'].value_counts().index.tolist()
+    print(f"\nActual product categories in data: {product_cats}")
 
     # Create a crosstab of brand vs product (counts) - SWAPPED: brands as rows, products as columns
     brand_product_counts = pd.crosstab(
@@ -493,6 +518,9 @@ def show_brand_by_product_type_heatmap(customers):
 
     # Filter to top brands only
     brand_product_counts = brand_product_counts.loc[top_brands]
+
+    # Reindex to ensure product categories are in the correct order
+    brand_product_counts = brand_product_counts[product_cats]
 
     # Create heatmap (rows = brands, columns = products)
     im1 = ax1.imshow(brand_product_counts, cmap='YlOrRd', aspect='auto')
@@ -530,6 +558,9 @@ def show_brand_by_product_type_heatmap(customers):
 
     # Filter to top brands only
     brand_product_conv = brand_product_conv.loc[top_brands]
+
+    # Reindex to ensure product categories are in the correct order
+    brand_product_conv = brand_product_conv[product_cats]
 
     # Create heatmap (rows = brands, columns = products)
     im2 = ax2.imshow(brand_product_conv, cmap='RdYlGn', aspect='auto', vmin=20, vmax=60)

@@ -5,6 +5,7 @@ import pandas as pd
 def aggregate_customer(df):
     """
     Single, comprehensive customer-level aggregation for all analyses
+    Uses brand-product pairs to prevent impossible brand-product combinations
     """
     # First, create all necessary quote-level columns
     df = df.copy()
@@ -30,9 +31,11 @@ def aggregate_customer(df):
     # Net subsidy
     df['net_subsidy'] = df['mt_prime_cee'] + df['mt_prime_maprimerenov']
 
-    # Heat pump flag
-    df['is_heat_pump'] = df['regroup_famille_equipement_produit_principal'].str.contains('HEAT_PUMP', case=False, na=False)
+    # Heat pump flag using new product column
+    df['is_heat_pump'] = df['regroup_famille_equipement_produit_principal'].str.contains('HEAT_PUMP', case=False,
+                                                                                         na=False)
 
+    # Create equipment category from the new grouped column
     def categorize_equipment(row):
         if pd.isna(row['regroup_famille_equipement_produit_principal']):
             return 'Unknown'
@@ -48,9 +51,25 @@ def aggregate_customer(df):
 
     df['equipment_category'] = df.apply(categorize_equipment, axis=1)
 
+    # =========================================================================
+    # KEY FIX: Create brand-product pairs to prevent impossible combinations
+    # =========================================================================
+
+    # For English categories
+    df['brand_product'] = df['marque_produit'].fillna('Unknown') + '|' + df['equipment_category'].fillna('Unknown')
+
+    # For French detailed categories (preserve raw data)
+    df['brand_product_french'] = df['marque_produit'].fillna('Unknown') + '|' + df[
+        'famille_equipement_produit_principal'].fillna('Unknown')
+
+    # For grouped English categories (the clean version)
+    df['brand_product_grouped'] = df['marque_produit'].fillna('Unknown') + '|' + df[
+        'regroup_famille_equipement_produit_principal'].fillna('Unknown')
+
     print("Quote-level columns created:")
     print(f"  - out_of_pocket: {df['out_of_pocket'].notna().sum():,} values")
     print(f"  - subsidy_issue: {df['subsidy_issue'].sum():,} issues ({df['subsidy_issue'].mean():.1%})")
+    print(f"  - brand-product pairs: {df['brand_product'].nunique():,} unique combinations")
 
     # Group by customer
     customer_data = df.groupby('numero_compte').agg({
@@ -79,13 +98,19 @@ def aggregate_customer(df):
         'mt_prime_cee': 'sum',
         'mt_prime_maprimerenov': 'sum',
 
-        # Product info - take mode (most common)
-        'equipment_category': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
-        'is_heat_pump': 'max',
-        'famille_equipement_produit_principal': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
+        # =========================================================================
+        # BRAND-PRODUCT PAIR AGGREGATION (KEY FIX)
+        # =========================================================================
+        # Take mode of the brand-product pair to ensure consistent combinations
+        'brand_product': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown|Unknown',
+        'brand_product_french': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown|Unknown',
+        'brand_product_grouped': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown|Unknown',
 
-        # ===== NEW: BRAND INFO =====
-        'marque_produit': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
+        # Track if they ever considered a heat pump
+        'is_heat_pump': 'max',
+
+        # Keep raw French product family for detailed analysis
+        'famille_equipement_produit_principal': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
 
         # Geography
         'nom_region': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
@@ -116,11 +141,12 @@ def aggregate_customer(df):
         'total_positive_subsidy', 'total_negative_subsidy', 'net_subsidy',
         'total_cee', 'total_maprimerenov',
 
-        # Product info
-        'main_equipment_category', 'ever_bought_heat_pump', 'main_product_family',
-
-        # ===== NEW: BRAND =====
-        'main_brand',
+        # BRAND-PRODUCT PAIRS
+        'brand_product',  # English category pairs
+        'brand_product_french',  # French detailed pairs
+        'brand_product_grouped',  # Clean grouped pairs
+        'ever_bought_heat_pump',  # Whether they ever considered a heat pump
+        'main_product_family',  # Raw French product family
 
         # Geography
         'main_region', 'main_agency',
@@ -131,6 +157,52 @@ def aggregate_customer(df):
 
     # Reset index to make numero_compte a column
     customer_data = customer_data.reset_index()
+
+    # =========================================================================
+    # ADD TRACKING FOR NUMBER OF BRAND-PRODUCT OPTIONS (MUST BE DONE AFTER AGGREGATION)
+    # =========================================================================
+
+    # Calculate how many different brand-product pairs each customer considered
+    # This needs to be done on the original df, not in the aggregation dict
+    brand_product_counts = df.groupby('numero_compte')['brand_product'].nunique().reset_index()
+    brand_product_counts.columns = ['numero_compte', 'brand_product_nunique']
+    customer_data = customer_data.merge(brand_product_counts, on='numero_compte', how='left')
+    customer_data['brand_product_nunique'] = customer_data['brand_product_nunique'].fillna(1).astype(int)
+
+    # =========================================================================
+    # SPLIT BRAND-PRODUCT PAIRS BACK INTO SEPARATE COLUMNS
+    # =========================================================================
+
+    # Split the brand-product pairs into separate columns
+    customer_data['main_brand'] = customer_data['brand_product'].str.split('|').str[0]
+    customer_data['main_equipment_category'] = customer_data['brand_product'].str.split('|').str[1]
+
+    # Also create the grouped versions
+    customer_data['main_brand_grouped'] = customer_data['brand_product_grouped'].str.split('|').str[0]
+    customer_data['main_product_grouped'] = customer_data['brand_product_grouped'].str.split('|').str[1]
+
+    # French version for detailed analysis
+    customer_data['main_brand_french'] = customer_data['brand_product_french'].str.split('|').str[0]
+    customer_data['main_product_french'] = customer_data['brand_product_french'].str.split('|').str[1]
+
+    # =========================================================================
+    # VALIDATION: Check for impossible brand-product combinations
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("BRAND-PRODUCT VALIDATION")
+    print("=" * 80)
+
+    # Check for ATLANTIC + Stove (should be 0)
+    atlantic_stove = customer_data[(customer_data['main_brand'] == 'ATLANTIC') &
+                                   (customer_data['main_equipment_category'] == 'Stove')]
+    print(f"\n❌ ATLANTIC + Stove customers (should be 0): {len(atlantic_stove)}")
+
+    if len(atlantic_stove) > 0:
+        print("⚠️  WARNING: Still have impossible combinations!")
+        print(
+            atlantic_stove[['numero_compte', 'main_brand', 'main_equipment_category', 'brand_product_nunique']].head())
+    else:
+        print("✅ FIXED: No ATLANTIC + Stove combinations found!")
 
     # =========================================================================
     # DERIVED FEATURES - ALL THE COLUMNS WE NEED FOR ANALYSIS
@@ -248,15 +320,25 @@ def aggregate_customer(df):
                                                  (pd.to_datetime(customer_data['first_quote_date']) <= suspension_end2)
                                          )
 
+    # 8. ADDITIONAL INSIGHTS
+    # Flag customers who considered multiple brand-product options
+    customer_data['shopped_around'] = (customer_data['brand_product_nunique'] > 1).astype(int)
+
     print(f"\n✅ Customer dataset created: {len(customer_data):,} customers")
     print(f"✅ Total columns: {len(customer_data.columns)}")
     print(f"✅ Key columns now available:")
+    print(f"   - main_brand: from brand-product pair (most common option)")
+    print(f"   - main_equipment_category: from brand-product pair (most common option)")
+    print(f"   - brand_product_nunique: {customer_data['brand_product_nunique'].mean():.1f} avg options per customer")
+    print(
+        f"   - shopped_around: {customer_data['shopped_around'].sum():,} customers ({customer_data['shopped_around'].mean():.1%})")
     print(f"   - decision_days: from customer_duration_days")
-    print(f"   - price_cv: from std_out_of_pocket / avg_out_of_pocket")  # Price Coefficient of Variation
+    print(f"   - price_cv: from std_out_of_pocket / avg_out_of_pocket")
     print(f"   - quote_count: alias for total_quotes")
-    print(f"   - main_brand: most common brand per customer")
     print(f"   - price_range: {customer_data['price_range'].mean():.0f} avg")
     print(f"   - price_volatility: {customer_data['price_volatility'].mean():.2f} avg")
+
+    print("\nSubsidy issue type distribution:")
     print(customer_data['subsidy_issue_type'].value_counts())
 
     # Save
