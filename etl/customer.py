@@ -31,22 +31,18 @@ def aggregate_customer(df):
     df['net_subsidy'] = df['mt_prime_cee'] + df['mt_prime_maprimerenov']
 
     # Heat pump flag
-    df['is_heat_pump'] = df['famille_equipement_produit'].str.contains('PAC|POMPE|HEAT|POMPE À CHALEUR', case=False,
-                                                                       na=False) | \
-                         df['type_equipement_produit'].str.contains('PAC|POMPE|HEAT|POMPE À CHALEUR', case=False,
-                                                                    na=False)
+    df['is_heat_pump'] = df['regroup_famille_equipement_produit_principal'].str.contains('HEAT_PUMP', case=False, na=False)
 
-    # Equipment category
     def categorize_equipment(row):
-        if pd.isna(row['famille_equipement_produit']):
+        if pd.isna(row['regroup_famille_equipement_produit_principal']):
             return 'Unknown'
         if row['is_heat_pump']:
             return 'Heat Pump'
-        if 'Chaudière' in str(row['famille_equipement_produit']):
+        if 'BOILER_GAS' in str(row['regroup_famille_equipement_produit_principal']):
             return 'Boiler'
-        if 'Climatisation' in str(row['famille_equipement_produit']):
+        if 'AIR_CONDITIONER' in str(row['regroup_famille_equipement_produit_principal']):
             return 'AC'
-        if 'Poêle' in str(row['famille_equipement_produit']):
+        if 'STOVE' in str(row['regroup_famille_equipement_produit_principal']):
             return 'Stove'
         return 'Other'
 
@@ -86,7 +82,7 @@ def aggregate_customer(df):
         # Product info - take mode (most common)
         'equipment_category': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
         'is_heat_pump': 'max',
-        'famille_equipement_produit': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
+        'famille_equipement_produit_principal': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',
 
         # ===== NEW: BRAND INFO =====
         'marque_produit': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown',

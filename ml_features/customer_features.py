@@ -11,7 +11,7 @@ def create_customer_features(
         customer_col: str = 'numero_compte',
         accept_col: str = 'fg_devis_accepte',
         price_col: str = 'mt_apres_remise_ht_devis',
-        family_col: str = 'famille_equipement_produit',
+        family_col: str = 'regroup_famille_equipement_produit_principal',
         agency_col: str = 'nom_agence',
         region_col: str = 'nom_region',
         discount_col: str = 'mt_remise_exceptionnelle_ht',
