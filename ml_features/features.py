@@ -57,25 +57,83 @@ def create_features(df_quotes, dataset_name="New Features"):
     return df_features
 
 
-def prepare_features(X, y, dataset_name):
-    print("\n🔧 ENCODING & PREPARING FOR MODELING...")
-    """Prepare feature matrix for modeling"""
+def prepare_features(X, y, dataset_name, encoders=None, feature_order=None):
+    """
+    Prepare feature matrix for modeling with consistent feature order.
+
+    Parameters:
+    - X: Features DataFrame
+    - y: Target Series (or None for test set)
+    - dataset_name: Name for logging
+    - encoders: Dict of fitted LabelEncoders (for test set only)
+    - feature_order: List of column names in fixed order (for test set)
+
+    Returns:
+    - X_clean: Prepared features (columns in fixed order)
+    - y: Target (unchanged)
+    - encoders: Dict of fitted LabelEncoders (for training set)
+    - feature_order: List of column names in fixed order (for training set)
+    """
+    print(f"\n🔧 ENCODING & PREPARING FOR MODELING...")
     print(f"  Preparing {dataset_name}...")
 
     X_clean = X.copy()
 
-    # Handle categorical
+    # Handle categorical columns
     categorical_cols = X_clean.select_dtypes(include=['object']).columns
     categorical_cols = [col for col in categorical_cols if col != 'numero_compte']
-    for col in categorical_cols:
-        X_clean[col] = X_clean[col].fillna('missing')
-        le = LabelEncoder()
-        X_clean[col] = le.fit_transform(X_clean[col].astype(str))
 
-    # Handle missing values
-    numeric_cols = X_clean.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        X_clean[col] = X_clean[col].fillna(X_clean[col].median())
+    # If encoders provided (test set), use them
+    if encoders is not None:
+        for col in categorical_cols:
+            if col in encoders:
+                X_clean[col] = X_clean[col].fillna('missing')
+                # Replace unseen categories with 'missing'
+                known_categories = set(encoders[col].classes_)
+                X_clean[col] = X_clean[col].astype(str).apply(
+                    lambda x: x if x in known_categories else 'missing'
+                )
+                # Ensure 'missing' is in the encoder's classes
+                if 'missing' not in known_categories:
+                    current_classes = encoders[col].classes_.tolist()
+                    if 'missing' not in current_classes:
+                        current_classes.append('missing')
+                        new_encoder = LabelEncoder()
+                        new_encoder.fit(current_classes)
+                        X_clean[col] = new_encoder.transform(X_clean[col])
+                        encoders[col] = new_encoder
+                    else:
+                        X_clean[col] = encoders[col].transform(X_clean[col])
+                else:
+                    X_clean[col] = encoders[col].transform(X_clean[col])
 
-    print(f"  Features: {X_clean.shape[1]}, Samples: {len(X_clean)}")
-    return X_clean, y
+        # Enforce feature order if provided
+        if feature_order is not None:
+            # Ensure all columns exist
+            missing_cols = set(feature_order) - set(X_clean.columns)
+            if missing_cols:
+                for col in missing_cols:
+                    X_clean[col] = 0
+            # Reorder columns
+            X_clean = X_clean[feature_order]
+
+        return X_clean, y
+    else:
+        # Training set: fit encoders
+        encoders = {}
+        for col in categorical_cols:
+            X_clean[col] = X_clean[col].fillna('missing')
+            # Add 'missing' to categories
+            all_categories = X_clean[col].astype(str).unique().tolist()
+            if 'missing' not in all_categories:
+                all_categories.append('missing')
+            le = LabelEncoder()
+            le.fit(all_categories)
+            X_clean[col] = le.transform(X_clean[col].astype(str))
+            encoders[col] = le
+
+        # Get feature order (sorted for consistency)
+        feature_order = sorted(X_clean.columns.tolist())
+        X_clean = X_clean[feature_order]
+
+        return X_clean, y, encoders, feature_order

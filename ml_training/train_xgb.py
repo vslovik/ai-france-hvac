@@ -6,20 +6,16 @@ from xgboost import XGBClassifier
 import wandb
 
 
-def train_xgb(X, y, model_name, wandb_run=None):
-    """
-    Train XGBoost classifier with optional wandb tracking
-
-    Args:
-        X: Features
-        y: Target
-        model_name: Name for saving model
-        wandb_run: Optional wandb run object for tracking
-    """
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+def train_xgb(X, y, model_name, wandb_run=None, X_test=None, y_test=None):
+    if X_test is not None and y_test is not None:
+        print("Using provided test set for evaluation.")
+        X_train, X_test, y_train, y_test = X, X_test, y, y_test
+    else:
+        print("No test set provided. Performing train-test split.")
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
 
     # Default hyperparameters (based on your roadmap)
     xgb_model = XGBClassifier(
